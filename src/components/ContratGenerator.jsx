@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api, fmt, printDocument } from '../utils/api.js';
+import { useAuth } from '../context/AuthContext.jsx';
 
 const STATUT_SOUM = {
   brouillon: { label: 'Brouillon',  color: '#78716c' },
@@ -9,6 +10,7 @@ const STATUT_SOUM = {
 };
 
 export default function ContratGenerator({ selectedChantier, setActiveTab }) {
+  const { refreshUser } = useAuth();
   const [soumissions, setSoumissions]   = useState([]);
   const [contrats, setContrats]         = useState([]);
   const [generating, setGenerating]     = useState(null);
@@ -41,6 +43,7 @@ export default function ContratGenerator({ selectedChantier, setActiveTab }) {
       if (res.success) {
         setContrats(prev => [res.contrat, ...prev]);
         setActiveContrat(res.contrat);
+        refreshUser();
       }
     } catch (err) {
       alert('Erreur génération: ' + err.message);

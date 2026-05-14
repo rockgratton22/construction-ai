@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { api, fmt, fileToBase64, createThumbnail } from '../utils/api.js';
+import { useAuth } from '../context/AuthContext.jsx';
 
 const CATEGORIES = ['matériaux', 'sous-traitant', 'équipement', 'location', 'autre'];
 
@@ -10,6 +11,7 @@ const STATUT_CFG = {
 };
 
 export default function FactureUpload({ selectedChantier, setActiveTab }) {
+  const { refreshUser } = useAuth();
   const [factures, setFactures]     = useState([]);
   const [analysing, setAnalysing]   = useState(false);
   const [dragOver, setDragOver]     = useState(false);
@@ -47,6 +49,7 @@ export default function FactureUpload({ selectedChantier, setActiveTab }) {
       const res = await api.analyserFacture({ base64, thumbnail, mimeType, chantierId: selectedChantier.id, fileName: file.name });
       if (res.success) {
         setNewFacture(res.facture);
+        refreshUser();
       } else {
         alert('Erreur analyse: ' + (res.error || 'Inconnue'));
       }

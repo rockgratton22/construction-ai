@@ -23,17 +23,25 @@ export default function TrialBanner() {
     }
   };
 
+  const usage = user.trialUsage || { soumissions: 0, contrats: 0, factures: 0 };
+  const limits = { soumissions: 5, contrats: 3, factures: 10 };
+
   const bg     = days > 10 ? '#dcfce7' : days > 5 ? '#fef3c7' : '#fef2f2';
   const color  = days > 10 ? '#15803d' : days > 5 ? '#92400e' : '#dc2626';
   const border = days > 10 ? '#bbf7d0' : days > 5 ? '#fde68a' : '#fecaca';
 
   return (
     <div className="no-print" style={{ background: bg, borderBottom: `1px solid ${border}`, padding: '8px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-      <span style={{ color, fontSize: 13, fontWeight: 600 }}>
-        {days > 0
-          ? `⏳ Essai gratuit — ${days} jour${days > 1 ? 's' : ''} restant${days > 1 ? 's' : ''}`
-          : '⚠️ Votre période d\'essai est terminée'}
-      </span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+        <span style={{ color, fontSize: 13, fontWeight: 600 }}>
+          {days > 0
+            ? `⏳ Essai gratuit — ${days} jour${days > 1 ? 's' : ''} restant${days > 1 ? 's' : ''}`
+            : '⚠️ Votre période d\'essai est terminée'}
+        </span>
+        <span style={{ color, fontSize: 12, opacity: 0.85 }}>
+          Soumissions: {usage.soumissions}/{limits.soumissions} · Contrats: {usage.contrats}/{limits.contrats} · Factures: {usage.factures}/{limits.factures}
+        </span>
+      </div>
       <button onClick={handleSubscribe} disabled={loading} style={{
         background: '#f97316', color: '#fff', border: 'none', borderRadius: 8,
         padding: '6px 16px', fontSize: 13, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap',

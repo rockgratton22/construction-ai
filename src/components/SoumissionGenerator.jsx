@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api, fmt, printDocument } from '../utils/api.js';
+import { useAuth } from '../context/AuthContext.jsx';
 
 const UNITES = ['h', 'm²', 'm', 'pi²', 'pi', 'forfait', 'unité', 'tonne', 'verge³'];
 const MODALITES_DEF = '30 % à la signature, 40 % mi-travaux, 30 % à la livraison';
@@ -14,6 +15,7 @@ const STATUT_CFG = {
 };
 
 export default function SoumissionGenerator({ selectedChantier, setActiveTab }) {
+  const { refreshUser } = useAuth();
   const [soumissions, setSoumissions]   = useState([]);
   const [showForm, setShowForm]         = useState(false);
   const [generating, setGenerating]     = useState(false);
@@ -61,6 +63,7 @@ export default function SoumissionGenerator({ selectedChantier, setActiveTab }) 
         setSoumissions(prev => [res.soumission, ...prev]);
         setPreview(res.soumission);
         setShowForm(false);
+        refreshUser();
       }
     } catch (err) {
       alert('Erreur: ' + err.message);

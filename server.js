@@ -129,6 +129,23 @@ function requireAccess(req, res, next) {
   res.status(402).json({ error: 'Période d\'essai terminée', trialExpired: true, daysUsed: daysSince });
 }
 
+function requireTrialLimit(type, max) {
+  return (req, res, next) => {
+    const users = readJSON(FILES.users);
+    const user = users.find(u => u.id === req.user.userId);
+    if (!user) return res.status(401).json({ error: 'Utilisateur introuvable' });
+    if (user.subscription?.status === 'active') return next();
+    const usage = user.trialUsage?.[type] || 0;
+    if (usage >= max) {
+      return res.status(402).json({
+        error: `Limite d'essai atteinte (${max} ${type} maximum). Abonnez-vous pour continuer.`,
+        limitReached: true, type, usage, max,
+      });
+    }
+    next();
+  };
+}
+
 // ──────────────────────────── HEALTH ────────────────────────────
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
@@ -153,6 +170,7 @@ app.post('/api/auth/signup', async (req, res) => {
     nomEntreprise: nomEntreprise?.trim() || '',
     firstUseDate: null,
     subscription: { status: 'trial', stripeCustomerId: null, stripeSubscriptionId: null },
+    trialUsage: { soumissions: 0, contrats: 0, factures: 0 },
     createdAt: new Date().toISOString(),
   };
 
@@ -310,7 +328,7 @@ app.get('/api/chantiers/:id/soumissions', requireAuth, requireAccess, (req, res)
   res.json(readJSON(FILES.soumissions).filter(s => s.chantierId === req.params.id));
 });
 
-app.post('/api/soumissions', requireAuth, requireAccess, async (req, res) => {
+app.post('/api/soumissions', requireAuth, requireAccess, requireTrialLimit('soumissions', 5), async (req, res) => {
   const { chantierId, typesTravaux, description, postes = [], mainOeuvreHeures, mainOeuvreRate,
           delaiEstime, modalitesPaiement, conditionsSpeciales } = req.body;
 
@@ -405,6 +423,15 @@ Style: professionnel, clair, conforme aux pratiques québécoises. Pas de markdo
     const soumissions = readJSON(FILES.soumissions);
     soumissions.push(soumission);
     writeJSON(FILES.soumissions, soumissions);
+
+    const usersArr = readJSON(FILES.users);
+    const uIdx = usersArr.findIndex(u => u.id === req.user.userId);
+    if (uIdx !== -1 && usersArr[uIdx].subscription?.status !== 'active') {
+      if (!usersArr[uIdx].trialUsage) usersArr[uIdx].trialUsage = { soumissions: 0, contrats: 0, factures: 0 };
+      usersArr[uIdx].trialUsage.soumissions = (usersArr[uIdx].trialUsage.soumissions || 0) + 1;
+      writeJSON(FILES.users, usersArr);
+    }
+
     res.json({ success: true, soumission });
   } catch (err) {
     console.error('Erreur soumission:', err.message);
@@ -469,7 +496,7 @@ app.get('/api/chantiers/:id/factures', requireAuth, requireAccess, (req, res) =>
   res.json(readJSON(FILES.factures).filter(f => f.chantierId === req.params.id).map(({ thumbnail, ...f }) => f));
 });
 
-app.post('/api/factures/analyser', requireAuth, requireAccess, async (req, res) => {
+app.post('/api/factures/analyser', requireAuth, requireAccess, requireTrialLimit('factures', 10), async (req, res) => {
   const { base64, thumbnail, mimeType, chantierId, fileName } = req.body;
   if (!base64 || !chantierId) return res.status(400).json({ error: 'Paramètres manquants' });
   if (!readJSON(FILES.chantiers).find(c => c.id === chantierId)) return res.status(404).json({ error: 'Chantier introuvable' });
@@ -524,6 +551,14 @@ app.post('/api/factures/analyser', requireAuth, requireAccess, async (req, res) 
     factures.push(facture);
     writeJSON(FILES.factures, factures);
 
+    const usersArr2 = readJSON(FILES.users);
+    const uIdx2 = usersArr2.findIndex(u => u.id === req.user.userId);
+    if (uIdx2 !== -1 && usersArr2[uIdx2].subscription?.status !== 'active') {
+      if (!usersArr2[uIdx2].trialUsage) usersArr2[uIdx2].trialUsage = { soumissions: 0, contrats: 0, factures: 0 };
+      usersArr2[uIdx2].trialUsage.factures = (usersArr2[uIdx2].trialUsage.factures || 0) + 1;
+      writeJSON(FILES.users, usersArr2);
+    }
+
     const { thumbnail: _t, ...factureOut } = facture;
     res.json({ success: true, facture: factureOut });
   } catch (err) {
@@ -553,7 +588,7 @@ app.get('/api/chantiers/:id/contrats', requireAuth, requireAccess, (req, res) =>
   res.json(readJSON(FILES.contrats).filter(c => c.chantierId === req.params.id));
 });
 
-app.post('/api/contrats/generer', requireAuth, requireAccess, async (req, res) => {
+app.post('/api/contrats/generer', requireAuth, requireAccess, requireTrialLimit('contrats', 3), async (req, res) => {
   const { chantierId, soumissionId } = req.body;
 
   const chantier   = readJSON(FILES.chantiers).find(c => c.id === chantierId);
@@ -628,6 +663,15 @@ Style: professionnel, légalement solide, conforme au droit québécois. Texte f
     const contrats = readJSON(FILES.contrats);
     contrats.push(contrat);
     writeJSON(FILES.contrats, contrats);
+
+    const usersArr3 = readJSON(FILES.users);
+    const uIdx3 = usersArr3.findIndex(u => u.id === req.user.userId);
+    if (uIdx3 !== -1 && usersArr3[uIdx3].subscription?.status !== 'active') {
+      if (!usersArr3[uIdx3].trialUsage) usersArr3[uIdx3].trialUsage = { soumissions: 0, contrats: 0, factures: 0 };
+      usersArr3[uIdx3].trialUsage.contrats = (usersArr3[uIdx3].trialUsage.contrats || 0) + 1;
+      writeJSON(FILES.users, usersArr3);
+    }
+
     res.json({ success: true, contrat });
   } catch (err) {
     console.error('Erreur contrat:', err.message);
