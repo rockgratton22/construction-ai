@@ -64,6 +64,8 @@ export default function SoumissionGenerator({ selectedChantier, setActiveTab }) 
         setPreview(res.soumission);
         setShowForm(false);
         refreshUser();
+      } else {
+        alert('Erreur serveur: ' + (res.error || 'Réponse inattendue'));
       }
     } catch (err) {
       alert('Erreur: ' + err.message);
