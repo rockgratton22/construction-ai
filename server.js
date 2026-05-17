@@ -238,20 +238,32 @@ app.post('/api/stripe/verify-session', requireAuth, async (req, res) => {
   const { sessionId } = req.body;
   try {
     const session = await stripe.checkout.sessions.retrieve(sessionId);
-    if (session.payment_status === 'paid') {
-      const users = readJSON(FILES.users);
-      const idx = users.findIndex(u => u.id === req.user.userId);
-      if (idx !== -1) {
-        users[idx].subscription = {
-          status: 'active',
-          stripeCustomerId: session.customer,
-          stripeSubscriptionId: session.subscription,
-        };
-        writeJSON(FILES.users, users);
-        return res.json({ success: true, user: computeUserOut(users[idx]) });
-      }
+
+    // Verify session belongs to the authenticated user
+    const users = readJSON(FILES.users);
+    const idx = users.findIndex(u => u.id === req.user.userId);
+    if (idx === -1) return res.status(404).json({ error: 'Utilisateur introuvable' });
+
+    if (session.payment_status !== 'paid') {
+      return res.status(400).json({ error: 'Paiement non confirmé' });
     }
-    res.status(400).json({ error: 'Paiement non confirmé' });
+
+    // Double-check subscription is active directly with Stripe
+    if (!session.subscription) {
+      return res.status(400).json({ error: 'Aucun abonnement associé' });
+    }
+    const subscription = await stripe.subscriptions.retrieve(session.subscription);
+    if (subscription.status !== 'active') {
+      return res.status(400).json({ error: `Abonnement non actif (statut: ${subscription.status})` });
+    }
+
+    users[idx].subscription = {
+      status: 'active',
+      stripeCustomerId: session.customer,
+      stripeSubscriptionId: session.subscription,
+    };
+    writeJSON(FILES.users, users);
+    return res.json({ success: true, user: computeUserOut(users[idx]) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
