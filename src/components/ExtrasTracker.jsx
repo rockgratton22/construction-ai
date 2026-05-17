@@ -15,15 +15,17 @@ const FORM_VIDE = {
 };
 
 export default function ExtrasTracker({ selectedChantier, setActiveTab }) {
-  const [extras, setExtras]       = useState([]);
-  const [showForm, setShowForm]   = useState(false);
-  const [form, setForm]           = useState(FORM_VIDE);
-  const [saving, setSaving]       = useState(false);
-  const [editId, setEditId]       = useState(null);
+  const [extras, setExtras]           = useState([]);
+  const [soumissions, setSoumissions] = useState([]);
+  const [showForm, setShowForm]       = useState(false);
+  const [form, setForm]               = useState(FORM_VIDE);
+  const [saving, setSaving]           = useState(false);
+  const [editId, setEditId]           = useState(null);
 
   useEffect(() => {
     if (!selectedChantier) return;
     api.getExtras(selectedChantier.id).then(setExtras).catch(() => {});
+    api.getSoumissions(selectedChantier.id).then(setSoumissions).catch(() => {});
   }, [selectedChantier]);
 
   if (!selectedChantier) {
@@ -37,9 +39,11 @@ export default function ExtrasTracker({ selectedChantier, setActiveTab }) {
     );
   }
 
-  const nonFactures = extras.filter(e => e.statut !== 'facturé');
-  const montantNF   = nonFactures.reduce((a, e) => a + (e.total || 0), 0);
-  const totalTTC    = extras.reduce((a, e) => a + (e.total || 0), 0);
+  const nonFactures   = extras.filter(e => e.statut !== 'facturé');
+  const montantNF     = nonFactures.reduce((a, e) => a + (e.total || 0), 0);
+  const totalTTC      = extras.reduce((a, e) => a + (e.total || 0), 0);
+  const soumAcceptee  = soumissions.find(s => s.statut === 'acceptée');
+  const totalProjet   = (soumAcceptee?.total || 0) + totalTTC;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -107,6 +111,12 @@ export default function ExtrasTracker({ selectedChantier, setActiveTab }) {
           <span style={s.statNum}>{fmt(totalTTC)}</span>
           <span style={s.statLabel}>Total extras</span>
         </div>
+        {soumAcceptee && (
+          <div style={{ ...s.statCard, background: '#f0fdf4', border: '1px solid #bbf7d0', flex: '2 1 280px' }}>
+            <span style={{ ...s.statNum, color: '#16a34a', fontSize: 20 }}>{fmt(totalProjet)}</span>
+            <span style={s.statLabel}>Total projet (soumission {soumAcceptee.numero} + extras)</span>
+          </div>
+        )}
       </div>
 
       {/* FORMULAIRE */}

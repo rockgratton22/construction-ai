@@ -9,6 +9,7 @@ export default function Header({ activeTab, setActiveTab, selectedChantier, setS
     { id: 'extras',      label: '➕ Extras' },
     { id: 'factures',    label: '🧾 Factures' },
     { id: 'contrats',    label: '📄 Contrats' },
+    { id: 'parametres',  label: '⚙️ Paramètres' },
   ];
 
   return (

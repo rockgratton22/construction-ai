@@ -275,7 +275,9 @@ app.get('/api/config', requireAuth, requireAccess, (_req, res) => res.json(readJ
 
 app.put('/api/config', requireAuth, requireAccess, (req, res) => {
   const cfg = readJSON(FILES.config);
-  cfg.entreprise = { ...cfg.entreprise, ...req.body };
+  const { conditionsPersonnalisees, ...entrepriseFields } = req.body;
+  cfg.entreprise = { ...cfg.entreprise, ...entrepriseFields };
+  if (conditionsPersonnalisees !== undefined) cfg.conditionsPersonnalisees = conditionsPersonnalisees;
   writeJSON(FILES.config, cfg);
   res.json(cfg);
 });
@@ -401,7 +403,7 @@ TOTAL: ${fmt(total)}
 MODALITÉS DE PAIEMENT: ${modalitesPaiement || '30 % à la signature, 40 % mi-travaux, 30 % à la livraison'}
 DÉLAI ESTIMÉ: ${delaiEstime || 'À confirmer'}
 ${conditionsSpeciales ? `CONDITIONS SPÉCIALES: ${conditionsSpeciales}` : ''}
-
+${cfg.conditionsPersonnalisees ? `\nCONDITIONS PERSONNALISÉES DE L'ENTREPRENEUR:\n${cfg.conditionsPersonnalisees}\n` : ''}
 Génère une soumission professionnelle en texte formaté incluant:
 1. En-tête avec infos entrepreneur et client
 2. Numéro et date de soumission
@@ -409,7 +411,7 @@ Génère une soumission professionnelle en texte formaté incluant:
 4. Tableau détaillé des postes et prix (reproduis les montants exacts)
 5. Récapitulatif financier avec taxes (reproduis les montants exacts)
 6. Conditions de paiement claires
-7. Conditions générales (garantie de base, validité 30 jours, force majeure)
+7. Conditions générales (inclure les conditions personnalisées de l'entrepreneur + clauses légales obligatoires: garantie RBQ, validité 30 jours, force majeure)
 8. Bloc de signature (Entrepreneur et Client avec espace date)
 
 Style: professionnel, clair, conforme aux pratiques québécoises. Pas de markdown.`;

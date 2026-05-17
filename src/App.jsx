@@ -10,6 +10,7 @@ import SoumissionGenerator from './components/SoumissionGenerator.jsx';
 import ExtrasTracker from './components/ExtrasTracker.jsx';
 import FactureUpload from './components/FactureUpload.jsx';
 import ContratGenerator from './components/ContratGenerator.jsx';
+import ParametresEntreprise from './components/ParametresEntreprise.jsx';
 
 export default function App() {
   const { user, loading: authLoading, token, trialExpired, refreshUser } = useAuth();
@@ -99,6 +100,7 @@ export default function App() {
         {activeTab === 'contrats' && (
           <ContratGenerator selectedChantier={selectedChantier} setActiveTab={setActiveTab} />
         )}
+        {activeTab === 'parametres' && <ParametresEntreprise />}
       </main>
     </div>
   );
