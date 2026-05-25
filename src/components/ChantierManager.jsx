@@ -163,7 +163,18 @@ export default function ChantierManager({ chantiers, setChantiers, selectedChant
                       <button onClick={e => { e.stopPropagation(); setActiveTab('contrats'); }} style={s.quickLink}>📄 Contrats</button>
                     </div>
                     {rent && rent.revenusEstimes > 0 && (
-                      <div style={s.rentBox} onClick={e => e.stopPropagation()}>
+                      <div onClick={e => e.stopPropagation()}>
+                        {rent.margePct < 0 && (
+                          <div style={s.alertDanger}>
+                            🚨 <strong>PERTE SUR CE CHANTIER</strong> — Tes coûts fournisseurs ({fmt(rent.coutsFournisseurs)}) dépassent ton budget soumissionné ({fmt(rent.revenusEstimes)}). Tu perds {fmt(Math.abs(rent.margeEstimee))} si tu continues sans ajuster.
+                          </div>
+                        )}
+                        {rent.margePct >= 0 && rent.margePct < 15 && (
+                          <div style={s.alertWarning}>
+                            ⚠️ <strong>Marge très faible ({rent.margePct}%)</strong> — Reste peu de place pour les imprévus. Surveille tes coûts de près.
+                          </div>
+                        )}
+                      <div style={s.rentBox}>
                         <div style={s.rentRow}>
                           <span style={s.rentLabel}>Budget soumissionné</span>
                           <span style={s.rentVal}>{fmt(rent.budgetSoumission)}</span>
@@ -189,6 +200,7 @@ export default function ChantierManager({ chantiers, setChantiers, selectedChant
                             <span style={{ ...s.rentVal, color: '#16a34a' }}>{fmt(rent.factureClientTotal)}</span>
                           </div>
                         )}
+                      </div>
                       </div>
                     )}
                   </div>
@@ -231,7 +243,9 @@ const s = {
     background: '#fff7ed', border: '1px solid #fed7aa', color: '#c2410c',
     borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontSize: 12, fontWeight: 600,
   },
-  rentBox:     { marginTop: 12, background: 'rgba(255,255,255,0.7)', borderRadius: 8, padding: '10px 12px', border: '1px solid #fed7aa' },
+  alertDanger: { marginTop: 10, background: '#fef2f2', border: '2px solid #dc2626', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#991b1b', lineHeight: 1.5 },
+  alertWarning:{ marginTop: 10, background: '#fffbeb', border: '2px solid #f59e0b', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#92400e', lineHeight: 1.5 },
+  rentBox:     { marginTop: 8, background: 'rgba(255,255,255,0.7)', borderRadius: 8, padding: '10px 12px', border: '1px solid #fed7aa' },
   rentRow:     { display: 'flex', justifyContent: 'space-between', padding: '3px 0', fontSize: 12 },
   rentLabel:   { color: '#78716c' },
   rentVal:     { fontWeight: 600, color: '#1c1917' },
