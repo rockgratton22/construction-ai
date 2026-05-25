@@ -15,7 +15,7 @@ import FacturationClient from './components/FacturationClient.jsx';
 
 export default function App() {
   const { user, loading: authLoading, token, trialExpired, refreshUser } = useAuth();
-  const [activeTab, setActiveTab]         = useState('chantiers');
+  const [activeTab, setActiveTab]         = useState('parametres');
   const [chantiers, setChantiers]         = useState([]);
   const [selectedChantier, setSelectedChantier] = useState(null);
   const [serverOk, setServerOk]           = useState(null);
