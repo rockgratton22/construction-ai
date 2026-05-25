@@ -105,6 +105,9 @@ export default function FactureUpload({ selectedChantier, setActiveTab }) {
           <p style={s.sub}>Chantier : <strong>{selectedChantier.nom}</strong> — {selectedChantier.client}</p>
         </div>
       </div>
+      <div style={s.infoBar}>
+        💡 <strong>À quoi ça sert :</strong> Prends en photo tes factures de Home Depot, de sous-traitants, de location d'équipement — Claude extrait les données automatiquement. Tu gardes le contrôle de tes coûts réels par chantier, et tu vois ta marge dans l'onglet Chantiers.
+      </div>
 
       {/* STATS */}
       <div style={s.statsRow}>
@@ -274,6 +277,7 @@ export default function FactureUpload({ selectedChantier, setActiveTab }) {
 
 const s = {
   page:    { padding: 32, maxWidth: 1100, margin: '0 auto' },
+  infoBar: { background: '#fef9c3', border: '1px solid #fde047', borderRadius: 10, padding: '10px 16px', marginBottom: 20, fontSize: 13, color: '#713f12', lineHeight: 1.5 },
   topBar:  { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 },
   h1:      { margin: 0, fontSize: 26, fontWeight: 700, color: '#1c1917' },
   sub:     { margin: '4px 0 0', color: '#78716c', fontSize: 14 },

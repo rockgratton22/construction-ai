@@ -415,17 +415,17 @@ MODALITÉS DE PAIEMENT: ${modalitesPaiement || '30 % à la signature, 40 % mi-tr
 DÉLAI ESTIMÉ: ${delaiEstime || 'À confirmer'}
 ${conditionsSpeciales ? `CONDITIONS SPÉCIALES: ${conditionsSpeciales}` : ''}
 ${cfg.conditionsPersonnalisees ? `\nCONDITIONS PERSONNALISÉES DE L'ENTREPRENEUR:\n${cfg.conditionsPersonnalisees}\n` : ''}
-Génère une soumission professionnelle en texte formaté incluant:
+Génère une soumission en texte formaté incluant:
 1. En-tête avec infos entrepreneur et client
 2. Numéro et date de soumission
-3. Description professionnelle des travaux proposés
-4. Tableau détaillé des postes et prix (reproduis les montants exacts)
+3. Description claire des travaux (2-3 phrases max, langage simple)
+4. Tableau des postes et prix (reproduis les montants exacts)
 5. Récapitulatif financier avec taxes (reproduis les montants exacts)
-6. Conditions de paiement claires
-7. Conditions générales (inclure les conditions personnalisées de l'entrepreneur + clauses légales obligatoires: garantie RBQ, validité 30 jours, force majeure)
+6. Conditions de paiement
+7. Conditions générales — IMPORTANT: écris-les en langage simple et direct, comme si tu parlais à un voisin. PAS de jargon juridique, PAS de références à des articles de loi. Maximum 8 points courts. Couvre: validité 30 jours, extras par autorisation écrite, garantie 1 an, retards hors contrôle (météo etc.), accès au chantier, nettoyage, litiges à l'amiable d'abord. Chaque point = 1-2 lignes max.
 8. Bloc de signature (Entrepreneur et Client avec espace date)
 
-Style: professionnel, clair, conforme aux pratiques québécoises. Pas de markdown.`;
+Style: clair, direct, humain. Un entrepreneur et son client doivent tout comprendre en 2 minutes. Pas de markdown.`;
 
   try {
     const response = await anthropic.messages.create({
@@ -651,29 +651,25 @@ TOTAL: ${fmt(soumission.total)}
 MODALITÉS: ${soumission.modalitesPaiement || '30 % à la signature, 40 % mi-travaux, 30 % à la livraison'}
 ${soumission.conditionsSpeciales ? `CONDITIONS SPÉCIALES: ${soumission.conditionsSpeciales}` : ''}
 
-Génère un contrat complet incluant:
-1. PARTIES AU CONTRAT
-2. OBJET ET PORTÉE DES TRAVAUX
-3. PRIX ET MODALITÉS DE PAIEMENT (reproduis les montants exacts)
-4. DÉLAIS ET CALENDRIER
-5. RESPONSABILITÉS DE L'ENTREPRENEUR
-6. RESPONSABILITÉS DU CLIENT
-7. GESTION DES EXTRAS ET MODIFICATIONS (bon de travail signé requis)
-8. GARANTIE (garantie légale de 1 an, vice caché)
-9. ASSURANCES
-10. RÉSILIATION DU CONTRAT
-11. RÉSOLUTION DE LITIGES (médiation puis tribunal Québec)
-12. DISPOSITIONS GÉNÉRALES
-13. SIGNATURES (espace pour date, signature entrepreneur et client)
-
 Date du contrat: ${new Date().toLocaleDateString('fr-CA')}
-Style: professionnel, légalement solide, conforme au droit québécois. Texte formaté, pas de markdown.`;
+
+Génère un contrat clair et court (max 2 pages) avec ces sections en langage simple et direct:
+1. LES PARTIES — qui fait quoi (entrepreneur et client, coordonnées)
+2. LES TRAVAUX — ce qu'on va faire, à quelle adresse, référence soumission
+3. LE PRIX ET LE PAIEMENT — montants exacts, échéancier clair (reproduis les montants exacts)
+4. LES DÉLAIS — quand ça commence, combien de temps
+5. LES EXTRAS — tout changement = entente écrite signée avant de commencer
+6. LA GARANTIE — 1 an sur les travaux, comme l'exige la RBQ
+7. SI ÇA NE MARCHE PAS — on essaie de s'entendre, sinon les tribunaux du Québec
+8. SIGNATURES — espace pour signer (entrepreneur et client, avec date)
+
+IMPORTANT: Écris comme si tu expliquais à un ami. Phrases courtes. Pas de jargon juridique. Pas de références aux articles du Code civil. Un entrepreneur et son client doivent lire ça en 3 minutes et tout comprendre. Le document reste légalement valide même en langage simple. Texte formaté, pas de markdown.`;
 
   try {
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 4000,
-      system: 'Tu es ConstructionAI, expert en contrats de construction pour le Québec. Génère des contrats professionnels conformes au droit québécois. Retourne uniquement le texte du contrat.',
+      system: 'Tu es ConstructionAI, assistant pour entrepreneurs en construction au Québec. Tu génères des contrats clairs et simples, compréhensibles sans formation juridique, mais légalement valides. Langage humain, direct, québécois. Retourne uniquement le texte du contrat.',
       messages: [{ role: 'user', content: prompt }],
     });
 

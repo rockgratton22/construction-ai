@@ -39,8 +39,11 @@ export default function ParametresEntreprise() {
       <div style={s.topBar}>
         <div>
           <h1 style={s.h1}>⚙️ Paramètres</h1>
-          <p style={s.sub}>Informations de votre entreprise — apparaissent sur toutes vos soumissions et contrats</p>
+          <p style={s.sub}>Informations de votre entreprise</p>
         </div>
+      </div>
+      <div style={s.infoBar}>
+        💡 <strong>À faire en premier :</strong> Entre tes infos d'entreprise ici une seule fois. Ton nom, adresse, numéro RBQ et courriel vont apparaître automatiquement sur toutes tes soumissions, factures et contrats. Sans ça, tes documents seront incomplets.
       </div>
 
       <form onSubmit={handleSave}>
@@ -108,6 +111,7 @@ export default function ParametresEntreprise() {
 
 const s = {
   page:    { padding: 32, maxWidth: 800, margin: '0 auto' },
+  infoBar: { background: '#fef9c3', border: '1px solid #fde047', borderRadius: 10, padding: '10px 16px', marginBottom: 24, fontSize: 13, color: '#713f12', lineHeight: 1.5 },
   topBar:  { marginBottom: 28 },
   h1:      { margin: 0, fontSize: 26, fontWeight: 700, color: '#1c1917' },
   sub:     { margin: '4px 0 0', color: '#78716c', fontSize: 14 },

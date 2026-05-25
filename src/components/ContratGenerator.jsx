@@ -71,6 +71,10 @@ export default function ContratGenerator({ selectedChantier, setActiveTab }) {
         </div>
       </div>
 
+      <div style={s.infoBar}>
+        💡 <strong>À quoi ça sert :</strong> Une soumission acceptée verbalement, ça ne protège personne. Le contrat met tout par écrit en langage clair — ce qu'on fait, combien, quand, et quoi faire si ça ne marche pas. Ça prend 30 secondes à générer, ça t'évite des problèmes.
+      </div>
+
       {/* CONTRAT PREVIEW */}
       {activeContrat && (
         <div style={s.previewCard} className="fade-in">
@@ -163,6 +167,7 @@ export default function ContratGenerator({ selectedChantier, setActiveTab }) {
 
 const s = {
   page:    { padding: 32, maxWidth: 1100, margin: '0 auto' },
+  infoBar: { background: '#fef9c3', border: '1px solid #fde047', borderRadius: 10, padding: '10px 16px', marginBottom: 24, fontSize: 13, color: '#713f12', lineHeight: 1.5 },
   topBar:  { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 },
   h1:      { margin: 0, fontSize: 26, fontWeight: 700, color: '#1c1917' },
   sub:     { margin: '4px 0 0', color: '#78716c', fontSize: 14 },
