@@ -18,9 +18,13 @@ async function apiFetch(url, options = {}) {
   }
 
   if (res.status === 402) {
-    window.dispatchEvent(new CustomEvent('ca:trialExpired'));
-    const err = new Error('Essai terminé');
+    const data = await res.clone().json().catch(() => ({}));
+    if (!data.chantierLimit) {
+      window.dispatchEvent(new CustomEvent('ca:trialExpired'));
+    }
+    const err = new Error(data.error || 'Essai terminé');
     err.trialExpired = true;
+    err.chantierLimit = !!data.chantierLimit;
     throw err;
   }
 

@@ -101,7 +101,7 @@ export default function AuthPage() {
 
         {mode === 'signup' && (
           <p style={s.trialNote}>
-            ✅ 30 jours gratuits · Aucune carte de crédit requise
+            ✅ 1 projet complet gratuit · Aucune carte de crédit requise
           </p>
         )}
       </div>

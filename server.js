@@ -96,11 +96,8 @@ function nextFactureClientNum() {
 }
 
 function computeUserOut(user) {
-  const daysRemaining = user.firstUseDate
-    ? Math.max(0, 30 - Math.floor((Date.now() - new Date(user.firstUseDate).getTime()) / 86400000))
-    : 30;
   const { passwordHash: _, ...userOut } = user;
-  return { ...userOut, daysRemaining };
+  return { ...userOut };
 }
 
 // ──────────────────────────── AUTH MIDDLEWARE ────────────────────────────
@@ -116,44 +113,20 @@ function requireAuth(req, res, next) {
   }
 }
 
-function requireAccess(req, res, next) {
-  const users = readJSON(FILES.users);
-  const user = users.find(u => u.id === req.user.userId);
+function requireSubscribedOrFirstChantier(req, res, next) {
+  const users    = readJSON(FILES.users);
+  const user     = users.find(u => u.id === req.user.userId);
   if (!user) return res.status(401).json({ error: 'Utilisateur introuvable' });
-
-  // Start trial on first real use
-  if (!user.firstUseDate) {
-    user.firstUseDate = new Date().toISOString();
-    const idx = users.findIndex(u => u.id === user.id);
-    users[idx] = user;
-    writeJSON(FILES.users, users);
-  }
-
-  // Active subscription always passes
   if (user.subscription?.status === 'active') return next();
 
-  // Check 30-day trial
-  const daysSince = Math.floor((Date.now() - new Date(user.firstUseDate).getTime()) / 86400000);
-  if (daysSince < 30) return next();
-
-  res.status(402).json({ error: 'Période d\'essai terminée', trialExpired: true, daysUsed: daysSince });
-}
-
-function requireTrialLimit(type, max) {
-  return (req, res, next) => {
-    const users = readJSON(FILES.users);
-    const user = users.find(u => u.id === req.user.userId);
-    if (!user) return res.status(401).json({ error: 'Utilisateur introuvable' });
-    if (user.subscription?.status === 'active') return next();
-    const usage = user.trialUsage?.[type] || 0;
-    if (usage >= max) {
-      return res.status(402).json({
-        error: `Limite d'essai atteinte (${max} ${type} maximum). Abonnez-vous pour continuer.`,
-        limitReached: true, type, usage, max,
-      });
-    }
-    next();
-  };
+  const chantierCount = readJSON(FILES.chantiers).length;
+  if (chantierCount >= 1) {
+    return res.status(402).json({
+      error: 'Votre essai gratuit inclut 1 projet complet. Abonnez-vous pour créer des projets illimités.',
+      chantierLimit: true,
+    });
+  }
+  next();
 }
 
 // ──────────────────────────── HEALTH ────────────────────────────
@@ -281,9 +254,9 @@ app.post('/api/stripe/verify-session', requireAuth, async (req, res) => {
 
 // ──────────────────────────── CONFIG ENTREPRISE ────────────────────────────
 
-app.get('/api/config', requireAuth, requireAccess, (_req, res) => res.json(readJSON(FILES.config)));
+app.get('/api/config', requireAuth, (_req, res) => res.json(readJSON(FILES.config)));
 
-app.put('/api/config', requireAuth, requireAccess, (req, res) => {
+app.put('/api/config', requireAuth, (req, res) => {
   const cfg = readJSON(FILES.config);
   const { conditionsPersonnalisees, ...entrepriseFields } = req.body;
   cfg.entreprise = { ...cfg.entreprise, ...entrepriseFields };
@@ -294,9 +267,9 @@ app.put('/api/config', requireAuth, requireAccess, (req, res) => {
 
 // ──────────────────────────── CHANTIERS ────────────────────────────
 
-app.get('/api/chantiers', requireAuth, requireAccess, (_req, res) => res.json(readJSON(FILES.chantiers)));
+app.get('/api/chantiers', requireAuth, (_req, res) => res.json(readJSON(FILES.chantiers)));
 
-app.post('/api/chantiers', requireAuth, requireAccess, (req, res) => {
+app.post('/api/chantiers', requireAuth, requireSubscribedOrFirstChantier, (req, res) => {
   const chantiers = readJSON(FILES.chantiers);
   const c = { id: uuidv4(), statut: 'en_soumission', ...req.body, createdAt: new Date().toISOString() };
   chantiers.push(c);
@@ -304,7 +277,7 @@ app.post('/api/chantiers', requireAuth, requireAccess, (req, res) => {
   res.json(c);
 });
 
-app.put('/api/chantiers/:id', requireAuth, requireAccess, (req, res) => {
+app.put('/api/chantiers/:id', requireAuth, (req, res) => {
   const chantiers = readJSON(FILES.chantiers);
   const idx = chantiers.findIndex(c => c.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Chantier introuvable' });
@@ -313,7 +286,7 @@ app.put('/api/chantiers/:id', requireAuth, requireAccess, (req, res) => {
   res.json(chantiers[idx]);
 });
 
-app.delete('/api/chantiers/:id', requireAuth, requireAccess, (req, res) => {
+app.delete('/api/chantiers/:id', requireAuth, (req, res) => {
   const id = req.params.id;
   writeJSON(FILES.chantiers,      readJSON(FILES.chantiers).filter(c => c.id !== id));
   writeJSON(FILES.soumissions,    readJSON(FILES.soumissions).filter(s => s.chantierId !== id));
@@ -326,7 +299,7 @@ app.delete('/api/chantiers/:id', requireAuth, requireAccess, (req, res) => {
 
 // ──────────────────────────── DASHBOARD ────────────────────────────
 
-app.get('/api/dashboard', requireAuth, requireAccess, (_req, res) => {
+app.get('/api/dashboard', requireAuth, (_req, res) => {
   const chantiers   = readJSON(FILES.chantiers);
   const soumissions = readJSON(FILES.soumissions);
   const extras      = readJSON(FILES.extras);
@@ -349,11 +322,11 @@ app.get('/api/dashboard', requireAuth, requireAccess, (_req, res) => {
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-app.get('/api/chantiers/:id/soumissions', requireAuth, requireAccess, (req, res) => {
+app.get('/api/chantiers/:id/soumissions', requireAuth, (req, res) => {
   res.json(readJSON(FILES.soumissions).filter(s => s.chantierId === req.params.id));
 });
 
-app.post('/api/soumissions', requireAuth, requireAccess, requireTrialLimit('soumissions', 5), async (req, res) => {
+app.post('/api/soumissions', requireAuth, async (req, res) => {
   const { chantierId, typesTravaux, description, postes = [], mainOeuvreHeures, mainOeuvreRate,
           delaiEstime, modalitesPaiement, conditionsSpeciales } = req.body;
 
@@ -464,7 +437,7 @@ Style: clair, direct, humain. Un entrepreneur et son client doivent tout compren
   }
 });
 
-app.put('/api/soumissions/:id', requireAuth, requireAccess, (req, res) => {
+app.put('/api/soumissions/:id', requireAuth, (req, res) => {
   const soumissions = readJSON(FILES.soumissions);
   const idx = soumissions.findIndex(s => s.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Soumission introuvable' });
@@ -473,18 +446,18 @@ app.put('/api/soumissions/:id', requireAuth, requireAccess, (req, res) => {
   res.json(soumissions[idx]);
 });
 
-app.delete('/api/soumissions/:id', requireAuth, requireAccess, (req, res) => {
+app.delete('/api/soumissions/:id', requireAuth, (req, res) => {
   writeJSON(FILES.soumissions, readJSON(FILES.soumissions).filter(s => s.id !== req.params.id));
   res.json({ ok: true });
 });
 
 // ──────────────────────────── EXTRAS ────────────────────────────
 
-app.get('/api/chantiers/:id/extras', requireAuth, requireAccess, (req, res) => {
+app.get('/api/chantiers/:id/extras', requireAuth, (req, res) => {
   res.json(readJSON(FILES.extras).filter(e => e.chantierId === req.params.id));
 });
 
-app.post('/api/extras', requireAuth, requireAccess, (req, res) => {
+app.post('/api/extras', requireAuth, (req, res) => {
   const extras = readJSON(FILES.extras);
   const qte   = parseFloat(req.body.qte)     || 1;
   const prix  = parseFloat(req.body.prixUnit) || 0;
@@ -499,7 +472,7 @@ app.post('/api/extras', requireAuth, requireAccess, (req, res) => {
   res.json(extra);
 });
 
-app.put('/api/extras/:id', requireAuth, requireAccess, (req, res) => {
+app.put('/api/extras/:id', requireAuth, (req, res) => {
   const extras = readJSON(FILES.extras);
   const idx = extras.findIndex(e => e.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Extra introuvable' });
@@ -510,18 +483,18 @@ app.put('/api/extras/:id', requireAuth, requireAccess, (req, res) => {
   res.json(extras[idx]);
 });
 
-app.delete('/api/extras/:id', requireAuth, requireAccess, (req, res) => {
+app.delete('/api/extras/:id', requireAuth, (req, res) => {
   writeJSON(FILES.extras, readJSON(FILES.extras).filter(e => e.id !== req.params.id));
   res.json({ ok: true });
 });
 
 // ──────────────────────────── FACTURES FOURNISSEURS ────────────────────────────
 
-app.get('/api/chantiers/:id/factures', requireAuth, requireAccess, (req, res) => {
+app.get('/api/chantiers/:id/factures', requireAuth, (req, res) => {
   res.json(readJSON(FILES.factures).filter(f => f.chantierId === req.params.id).map(({ thumbnail, ...f }) => f));
 });
 
-app.post('/api/factures/analyser', requireAuth, requireAccess, requireTrialLimit('factures', 10), async (req, res) => {
+app.post('/api/factures/analyser', requireAuth, async (req, res) => {
   const { base64, thumbnail, mimeType, chantierId, fileName } = req.body;
   if (!base64 || !chantierId) return res.status(400).json({ error: 'Paramètres manquants' });
   if (!readJSON(FILES.chantiers).find(c => c.id === chantierId)) return res.status(404).json({ error: 'Chantier introuvable' });
@@ -592,7 +565,7 @@ app.post('/api/factures/analyser', requireAuth, requireAccess, requireTrialLimit
   }
 });
 
-app.put('/api/factures/:id', requireAuth, requireAccess, (req, res) => {
+app.put('/api/factures/:id', requireAuth, (req, res) => {
   const factures = readJSON(FILES.factures);
   const idx = factures.findIndex(f => f.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Facture introuvable' });
@@ -602,18 +575,18 @@ app.put('/api/factures/:id', requireAuth, requireAccess, (req, res) => {
   res.json(out);
 });
 
-app.delete('/api/factures/:id', requireAuth, requireAccess, (req, res) => {
+app.delete('/api/factures/:id', requireAuth, (req, res) => {
   writeJSON(FILES.factures, readJSON(FILES.factures).filter(f => f.id !== req.params.id));
   res.json({ ok: true });
 });
 
 // ──────────────────────────── CONTRATS ────────────────────────────
 
-app.get('/api/chantiers/:id/contrats', requireAuth, requireAccess, (req, res) => {
+app.get('/api/chantiers/:id/contrats', requireAuth, (req, res) => {
   res.json(readJSON(FILES.contrats).filter(c => c.chantierId === req.params.id));
 });
 
-app.post('/api/contrats/generer', requireAuth, requireAccess, requireTrialLimit('contrats', 3), async (req, res) => {
+app.post('/api/contrats/generer', requireAuth, async (req, res) => {
   const { chantierId, soumissionId } = req.body;
 
   const chantier   = readJSON(FILES.chantiers).find(c => c.id === chantierId);
@@ -700,7 +673,7 @@ IMPORTANT: Écris comme si tu expliquais à un ami. Phrases courtes. Pas de jarg
   }
 });
 
-app.delete('/api/contrats/:id', requireAuth, requireAccess, (req, res) => {
+app.delete('/api/contrats/:id', requireAuth, (req, res) => {
   writeJSON(FILES.contrats, readJSON(FILES.contrats).filter(c => c.id !== req.params.id));
   res.json({ ok: true });
 });
@@ -715,11 +688,11 @@ const TYPE_FAC_LABELS = {
   partielle:   'Facture partielle',
 };
 
-app.get('/api/chantiers/:id/factures-client', requireAuth, requireAccess, (req, res) => {
+app.get('/api/chantiers/:id/factures-client', requireAuth, (req, res) => {
   res.json(readJSON(FILES.facturesClient).filter(f => f.chantierId === req.params.id));
 });
 
-app.post('/api/factures-client/generer', requireAuth, requireAccess, async (req, res) => {
+app.post('/api/factures-client/generer', requireAuth, async (req, res) => {
   const { chantierId, type, postes = [], modalitesPaiement, notes, extrasIds = [] } = req.body;
 
   const chantier = readJSON(FILES.chantiers).find(c => c.id === chantierId);
@@ -848,7 +821,7 @@ Style: professionnel, sobre, clair, conforme aux pratiques québécoises. Pas de
   }
 });
 
-app.put('/api/factures-client/:id', requireAuth, requireAccess, (req, res) => {
+app.put('/api/factures-client/:id', requireAuth, (req, res) => {
   const facturesClient = readJSON(FILES.facturesClient);
   const idx = facturesClient.findIndex(f => f.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Facture introuvable' });
@@ -857,14 +830,14 @@ app.put('/api/factures-client/:id', requireAuth, requireAccess, (req, res) => {
   res.json(facturesClient[idx]);
 });
 
-app.delete('/api/factures-client/:id', requireAuth, requireAccess, (req, res) => {
+app.delete('/api/factures-client/:id', requireAuth, (req, res) => {
   writeJSON(FILES.facturesClient, readJSON(FILES.facturesClient).filter(f => f.id !== req.params.id));
   res.json({ ok: true });
 });
 
 // ──────────────────────────── RENTABILITÉ ────────────────────────────
 
-app.get('/api/chantiers/:id/rentabilite', requireAuth, requireAccess, (req, res) => {
+app.get('/api/chantiers/:id/rentabilite', requireAuth, (req, res) => {
   const chantierId = req.params.id;
   const soumissions    = readJSON(FILES.soumissions).filter(s => s.chantierId === chantierId);
   const extras         = readJSON(FILES.extras).filter(e => e.chantierId === chantierId);

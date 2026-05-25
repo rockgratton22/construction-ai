@@ -1,6 +1,50 @@
 import { useState, useEffect } from 'react';
 import { api, fmt } from '../utils/api.js';
 
+function UpgradePrompt({ onClose }) {
+  const [loading, setLoading] = useState(false);
+  const handleSubscribe = async () => {
+    setLoading(true);
+    try {
+      const { url, error } = await api.stripeCheckout();
+      if (error) { alert(error); setLoading(false); return; }
+      window.location.href = url;
+    } catch { setLoading(false); }
+  };
+  return (
+    <div style={up.overlay} onClick={onClose}>
+      <div style={up.card} onClick={e => e.stopPropagation()}>
+        <div style={up.icon}>🚀</div>
+        <h2 style={up.title}>Ton essai gratuit inclut 1 projet</h2>
+        <p style={up.text}>
+          Tu as exploré toutes les fonctionnalités sur ton premier chantier — soumissions, extras, factures, contrats. Pour créer d'autres projets, abonne-toi.
+        </p>
+        <ul style={up.list}>
+          <li>✅ Projets illimités</li>
+          <li>✅ Soumissions illimitées</li>
+          <li>✅ Facturation client complète</li>
+          <li>✅ Suivi de rentabilité en temps réel</li>
+        </ul>
+        <button onClick={handleSubscribe} disabled={loading} style={up.btn}>
+          {loading ? 'Redirection...' : 'S\'abonner — 199 $/mois →'}
+        </button>
+        <button onClick={onClose} style={up.cancel}>Plus tard</button>
+      </div>
+    </div>
+  );
+}
+
+const up = {
+  overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300, padding: 24 },
+  card:    { background: '#fff', borderRadius: 20, padding: 40, maxWidth: 440, width: '100%', textAlign: 'center', boxShadow: '0 24px 64px rgba(0,0,0,0.4)' },
+  icon:    { fontSize: 52, marginBottom: 12 },
+  title:   { margin: '0 0 12px', fontSize: 22, fontWeight: 800, color: '#1c1917' },
+  text:    { color: '#57534e', fontSize: 14, lineHeight: 1.6, margin: '0 0 20px' },
+  list:    { textAlign: 'left', margin: '0 0 24px', padding: '0 0 0 8px', listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 8, fontSize: 14, color: '#1c1917' },
+  btn:     { display: 'block', width: '100%', background: '#f97316', color: '#fff', border: 'none', borderRadius: 10, padding: '14px 0', fontSize: 16, fontWeight: 700, cursor: 'pointer', marginBottom: 10 },
+  cancel:  { background: 'none', border: 'none', color: '#a8a29e', fontSize: 13, cursor: 'pointer' },
+};
+
 const STATUTS = {
   en_soumission: { label: 'En soumission', color: '#3b82f6', bg: '#eff6ff' },
   en_cours:      { label: 'En cours',      color: '#16a34a', bg: '#f0fdf4' },
@@ -11,12 +55,13 @@ const STATUTS = {
 const CHAMP_VIDE = { nom: '', client: '', email: '', tel: '', adresse: '', statut: 'en_soumission', dateDebut: '' };
 
 export default function ChantierManager({ chantiers, setChantiers, selectedChantier, setSelectedChantier, setActiveTab }) {
-  const [showForm, setShowForm]   = useState(false);
-  const [editTarget, setEditTarget] = useState(null);
-  const [form, setForm]           = useState(CHAMP_VIDE);
-  const [saving, setSaving]       = useState(false);
-  const [stats, setStats]         = useState({});
-  const [rent, setRent]           = useState(null);
+  const [showForm, setShowForm]       = useState(false);
+  const [editTarget, setEditTarget]   = useState(null);
+  const [form, setForm]               = useState(CHAMP_VIDE);
+  const [saving, setSaving]           = useState(false);
+  const [stats, setStats]             = useState({});
+  const [rent, setRent]               = useState(null);
+  const [showUpgrade, setShowUpgrade] = useState(false);
 
   useEffect(() => {
     api.getDashboard().then(d => {
@@ -47,6 +92,8 @@ export default function ChantierManager({ chantiers, setChantiers, selectedChant
         setChantiers(prev => [...prev, created]);
       }
       setShowForm(false);
+    } catch (err) {
+      if (err.chantierLimit) { setShowForm(false); setShowUpgrade(true); }
     } finally {
       setSaving(false);
     }
@@ -125,6 +172,8 @@ export default function ChantierManager({ chantiers, setChantiers, selectedChant
           </form>
         </div>
       )}
+
+      {showUpgrade && <UpgradePrompt onClose={() => setShowUpgrade(false)} />}
 
       {chantiers.length === 0 ? (
         <div style={s.empty}>
