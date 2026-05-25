@@ -114,12 +114,12 @@ function requireAuth(req, res, next) {
 }
 
 function requireSubscribedOrFirstChantier(req, res, next) {
-  const users    = readJSON(FILES.users);
-  const user     = users.find(u => u.id === req.user.userId);
+  const users = readJSON(FILES.users);
+  const user  = users.find(u => u.id === req.user.userId);
   if (!user) return res.status(401).json({ error: 'Utilisateur introuvable' });
   if (user.subscription?.status === 'active') return next();
 
-  const chantierCount = readJSON(FILES.chantiers).length;
+  const chantierCount = readJSON(FILES.chantiers).filter(c => c.userId === req.user.userId).length;
   if (chantierCount >= 1) {
     return res.status(402).json({
       error: 'Votre essai gratuit inclut 1 projet complet. Abonnez-vous pour créer des projets illimités.',
@@ -267,11 +267,13 @@ app.put('/api/config', requireAuth, (req, res) => {
 
 // ──────────────────────────── CHANTIERS ────────────────────────────
 
-app.get('/api/chantiers', requireAuth, (_req, res) => res.json(readJSON(FILES.chantiers)));
+app.get('/api/chantiers', requireAuth, (req, res) => {
+  res.json(readJSON(FILES.chantiers).filter(c => c.userId === req.user.userId));
+});
 
 app.post('/api/chantiers', requireAuth, requireSubscribedOrFirstChantier, (req, res) => {
   const chantiers = readJSON(FILES.chantiers);
-  const c = { id: uuidv4(), statut: 'en_soumission', ...req.body, createdAt: new Date().toISOString() };
+  const c = { id: uuidv4(), statut: 'en_soumission', ...req.body, userId: req.user.userId, createdAt: new Date().toISOString() };
   chantiers.push(c);
   writeJSON(FILES.chantiers, chantiers);
   res.json(c);
@@ -299,11 +301,13 @@ app.delete('/api/chantiers/:id', requireAuth, (req, res) => {
 
 // ──────────────────────────── DASHBOARD ────────────────────────────
 
-app.get('/api/dashboard', requireAuth, (_req, res) => {
-  const chantiers   = readJSON(FILES.chantiers);
-  const soumissions = readJSON(FILES.soumissions);
-  const extras      = readJSON(FILES.extras);
-  const factures    = readJSON(FILES.factures);
+app.get('/api/dashboard', requireAuth, (req, res) => {
+  const userId      = req.user.userId;
+  const chantiers   = readJSON(FILES.chantiers).filter(c => c.userId === userId);
+  const chantierIds = chantiers.map(c => c.id);
+  const soumissions = readJSON(FILES.soumissions).filter(s => chantierIds.includes(s.chantierId));
+  const extras      = readJSON(FILES.extras).filter(e => chantierIds.includes(e.chantierId));
+  const factures    = readJSON(FILES.factures).filter(f => chantierIds.includes(f.chantierId));
   const extrasNonFactures = extras.filter(e => e.statut !== 'facturé');
   res.json({
     chantiers,
