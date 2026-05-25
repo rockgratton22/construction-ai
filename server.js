@@ -258,9 +258,11 @@ app.get('/api/config', requireAuth, (_req, res) => res.json(readJSON(FILES.confi
 
 app.put('/api/config', requireAuth, (req, res) => {
   const cfg = readJSON(FILES.config);
-  const { conditionsPersonnalisees, ...entrepriseFields } = req.body;
+  const { conditionsPersonnalisees, compteur_soumissions, compteur_factures_client, ...entrepriseFields } = req.body;
   cfg.entreprise = { ...cfg.entreprise, ...entrepriseFields };
   if (conditionsPersonnalisees !== undefined) cfg.conditionsPersonnalisees = conditionsPersonnalisees;
+  if (compteur_soumissions   !== undefined) cfg.compteur_soumissions   = parseInt(compteur_soumissions)   || 0;
+  if (compteur_factures_client !== undefined) cfg.compteur_factures_client = parseInt(compteur_factures_client) || 0;
   writeJSON(FILES.config, cfg);
   res.json(cfg);
 });

@@ -2,17 +2,23 @@ import { useState, useEffect } from 'react';
 import { api } from '../utils/api.js';
 
 const VIDE = { nom: '', adresse: '', telephone: '', email: '', rbq: '', neq: '' };
+const COMPTEUR_VIDE = { soumissions: 1, factures: 1 };
 
 export default function ParametresEntreprise() {
-  const [form, setForm]     = useState(VIDE);
-  const [conditions, setCond] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved]   = useState(false);
+  const [form, setForm]         = useState(VIDE);
+  const [conditions, setCond]   = useState('');
+  const [compteurs, setCompteurs] = useState(COMPTEUR_VIDE);
+  const [saving, setSaving]     = useState(false);
+  const [saved, setSaved]       = useState(false);
 
   useEffect(() => {
     api.getConfig().then(cfg => {
       if (cfg.entreprise) setForm({ ...VIDE, ...cfg.entreprise });
       if (cfg.conditionsPersonnalisees) setCond(cfg.conditionsPersonnalisees);
+      setCompteurs({
+        soumissions: (cfg.compteur_soumissions || 0) + 1,
+        factures:    (cfg.compteur_factures_client || 0) + 1,
+      });
     }).catch(() => {});
   }, []);
 
@@ -20,7 +26,12 @@ export default function ParametresEntreprise() {
     e.preventDefault();
     setSaving(true);
     try {
-      await api.updateConfig({ ...form, conditionsPersonnalisees: conditions });
+      await api.updateConfig({
+        ...form,
+        conditionsPersonnalisees: conditions,
+        compteur_soumissions:      Math.max(0, parseInt(compteurs.soumissions) - 1) || 0,
+        compteur_factures_client:  Math.max(0, parseInt(compteurs.factures) - 1) || 0,
+      });
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } finally {
@@ -81,6 +92,29 @@ export default function ParametresEntreprise() {
             Numéro NEQ (optionnel)
             <input {...f('neq')} placeholder="Ex: 1234567890" />
           </label>
+        </div>
+
+        <div style={s.card}>
+          <h2 style={s.cardTitle}>Numérotation des documents</h2>
+          <p style={s.hint}>Définis le prochain numéro à utiliser. Utile si tu migres depuis un autre système.</p>
+          <div style={s.grid2}>
+            <label style={s.label}>
+              Prochaine soumission (SOU-{new Date().getFullYear()}-…)
+              <input
+                style={s.input} type="number" min="1"
+                value={compteurs.soumissions}
+                onChange={e => setCompteurs(c => ({ ...c, soumissions: e.target.value }))}
+              />
+            </label>
+            <label style={s.label}>
+              Prochaine facture client (FAC-{new Date().getFullYear()}-…)
+              <input
+                style={s.input} type="number" min="1"
+                value={compteurs.factures}
+                onChange={e => setCompteurs(c => ({ ...c, factures: e.target.value }))}
+              />
+            </label>
+          </div>
         </div>
 
         <div style={s.card}>

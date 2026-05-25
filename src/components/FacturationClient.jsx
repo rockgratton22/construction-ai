@@ -1,35 +1,30 @@
 import { useState, useEffect } from 'react';
 import { api, fmt, printDocument } from '../utils/api.js';
 
-const TYPES = {
-  acompte:     { label: 'Acompte',                         icon: '💰', desc: 'Premier versement avant les travaux' },
-  'mi-travaux':{ label: 'Mi-travaux',                      icon: '🔨', desc: 'Versement à mi-chantier' },
-  finale:      { label: 'Facture finale',                  icon: '✅', desc: 'Solde final à la livraison' },
-  extras:      { label: 'Extras / Travaux supplémentaires',icon: '➕', desc: 'Travaux hors contrat original' },
-  partielle:   { label: 'Facture partielle',               icon: '📄', desc: 'Facturation personnalisée' },
-};
-
 const STATUTS = {
   brouillon: { label: 'Brouillon', color: '#78716c', bg: '#f5f5f4' },
   envoyée:   { label: 'Envoyée',   color: '#2563eb', bg: '#eff6ff' },
   payée:     { label: 'Payée',     color: '#16a34a', bg: '#f0fdf4' },
 };
 
-const newPoste = () => ({ id: Date.now(), description: '', qte: 1, prixUnit: 0 });
+const LABELS_VERSEMENT = ['Acompte', 'Mi-travaux', 'Solde final', 'Autre'];
 
 export default function FacturationClient({ selectedChantier, setActiveTab }) {
-  const [factures, setFactures]       = useState([]);
-  const [extras, setExtras]           = useState([]);
-  const [showForm, setShowForm]       = useState(false);
-  const [generating, setGenerating]   = useState(false);
-  const [preview, setPreview]         = useState(null);
-  const [postes, setPostes]           = useState([newPoste()]);
+  const [factures, setFactures]     = useState([]);
+  const [extras, setExtras]         = useState([]);
+  const [soumission, setSoumission] = useState(null);
+  const [showForm, setShowForm]     = useState(false);
+  const [mode, setMode]             = useState(null); // 'versement' | 'extras'
+  const [generating, setGenerating] = useState(false);
+  const [preview, setPreview]       = useState(null);
+
+  // Versement state
+  const [labelVersement, setLabelVersement] = useState('Acompte');
+  const [montantHT, setMontantHT]           = useState('');
+  const [modalites, setModalites]           = useState('Payable sur réception');
+
+  // Extras state
   const [extrasChoisis, setExtrasChoisis] = useState([]);
-  const [form, setForm] = useState({
-    type: 'mi-travaux',
-    modalitesPaiement: 'Payable sur réception',
-    notes: '',
-  });
 
   useEffect(() => {
     if (!selectedChantier) return;
@@ -37,6 +32,13 @@ export default function FacturationClient({ selectedChantier, setActiveTab }) {
     api.getExtras(selectedChantier.id)
       .then(all => setExtras(all.filter(e => e.statut !== 'facturé')))
       .catch(() => {});
+    api.getSoumissions(selectedChantier.id)
+      .then(list => {
+        const ref = list.find(s => s.statut === 'acceptée')
+          || list.find(s => s.statut === 'envoyée')
+          || list[0];
+        setSoumission(ref || null);
+      }).catch(() => {});
   }, [selectedChantier]);
 
   if (!selectedChantier) {
@@ -50,48 +52,51 @@ export default function FacturationClient({ selectedChantier, setActiveTab }) {
     );
   }
 
-  const postesTotal   = postes.reduce((a, p) => a + ((parseFloat(p.qte)||0) * (parseFloat(p.prixUnit)||0)), 0);
-  const extrasTotal   = extras.filter(e => extrasChoisis.includes(e.id)).reduce((a, e) => a + (e.total || 0), 0);
-  const sousTotal     = postesTotal + extrasTotal;
-  const tps           = sousTotal * 0.05;
-  const tvq           = sousTotal * 0.09975;
-  const total         = sousTotal + tps + tvq;
+  const tps = (v) => v * 0.05;
+  const tvq = (v) => v * 0.09975;
+  const ttc = (v) => v + tps(v) + tvq(v);
 
-  const addPoste    = () => setPostes(p => [...p, newPoste()]);
-  const removePoste = (id) => setPostes(p => p.filter(x => x.id !== id));
-  const updatePoste = (id, field, val) => setPostes(p => p.map(x => x.id === id ? { ...x, [field]: val } : x));
+  const montantHTNum    = parseFloat(montantHT) || 0;
+  const totalVersement  = ttc(montantHTNum);
+
+  const extrasSelTotal  = extras.filter(e => extrasChoisis.includes(e.id)).reduce((a, e) => a + (e.total || 0), 0);
+  const totalExtras     = ttc(extrasSelTotal);
+
+  const pct = (p) => {
+    if (!soumission) return;
+    const ht = (soumission.sousTotal || 0) * p / 100;
+    setMontantHT(ht.toFixed(2));
+  };
 
   const toggleExtra = (id) => setExtrasChoisis(prev =>
     prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
   );
 
   const openForm = () => {
-    setForm({ type: 'mi-travaux', modalitesPaiement: 'Payable sur réception', notes: '' });
-    setPostes([newPoste()]);
-    setExtrasChoisis([]);
-    setPreview(null);
+    setMode(null); setPreview(null);
+    setLabelVersement('Acompte'); setMontantHT('');
+    setModalites('Payable sur réception'); setExtrasChoisis([]);
     setShowForm(true);
   };
 
-  const handleGenerer = async (e) => {
-    e.preventDefault();
-    if (sousTotal <= 0) { alert('Ajoutez au moins un poste ou un extra avec un montant.'); return; }
+  const handleGenerer = async () => {
+    if (mode === 'versement' && montantHTNum <= 0) { alert('Entre un montant.'); return; }
+    if (mode === 'extras' && extrasChoisis.length === 0) { alert('Sélectionne au moins un extra.'); return; }
     setGenerating(true);
-    setPreview(null);
     try {
-      const res = await api.genererFactureClient({
-        chantierId: selectedChantier.id,
-        ...form,
-        postes: postes.filter(p => p.description && parseFloat(p.prixUnit) > 0),
-        extrasIds: extrasChoisis,
-      });
+      const payload = mode === 'versement'
+        ? { chantierId: selectedChantier.id, type: labelVersement.toLowerCase().replace(' ', '-'),
+            postes: [{ description: labelVersement, qte: 1, prixUnit: montantHTNum }],
+            extrasIds: [], modalitesPaiement: modalites }
+        : { chantierId: selectedChantier.id, type: 'extras',
+            postes: [], extrasIds: extrasChoisis, modalitesPaiement: modalites };
+
+      const res = await api.genererFactureClient(payload);
       if (res.success) {
         setFactures(prev => [res.facture, ...prev]);
         setPreview(res.facture);
         setShowForm(false);
-        // Retirer les extras maintenant facturés
         setExtras(prev => prev.filter(e => !extrasChoisis.includes(e.id)));
-        setExtrasChoisis([]);
       } else {
         alert('Erreur: ' + (res.error || 'Réponse inattendue'));
       }
@@ -129,14 +134,14 @@ export default function FacturationClient({ selectedChantier, setActiveTab }) {
       </div>
 
       <div style={s.infoBar}>
-        💡 <strong>À quoi ça sert :</strong> C'est ici que tu demandes d'être payé. Génère tes factures à envoyer au client — acompte avant les travaux, mi-travaux, solde final. Les extras que tu as notés s'importent automatiquement.
+        💡 <strong>À quoi ça sert :</strong> C'est ici que tu demandes d'être payé. Génère tes factures à envoyer au client — versements selon l'échéancier ou extras accumulés.
       </div>
 
       {/* RÉSUMÉ */}
       {factures.length > 0 && (
         <div style={s.summary}>
           <div style={s.summaryItem}>
-            <span style={s.summaryLabel}>Total facturé</span>
+            <span style={s.summaryLabel}>Facturé</span>
             <span style={s.summaryVal}>{fmt(totalFacturé)}</span>
           </div>
           <div style={s.summaryDivider} />
@@ -154,109 +159,121 @@ export default function FacturationClient({ selectedChantier, setActiveTab }) {
 
       {/* FORMULAIRE */}
       {showForm && (
-        <form onSubmit={handleGenerer} style={s.formCard} className="fade-in">
+        <div style={s.formCard} className="fade-in">
           <div style={s.formHeader}>
             <h2 style={s.formTitle}>Nouvelle facture</h2>
-            <button type="button" onClick={() => setShowForm(false)} style={s.closeBtn}>✕</button>
+            <button onClick={() => setShowForm(false)} style={s.closeBtn}>✕</button>
           </div>
 
-          {/* Choix du type */}
-          <div style={s.section}>
-            <span style={s.sectionTitle}>Type de facturation</span>
-            <div style={s.typeGrid}>
-              {Object.entries(TYPES).map(([key, t]) => (
-                <button type="button" key={key} onClick={() => setForm(f => ({ ...f, type: key }))}
-                  style={{ ...s.typeBtn, ...(form.type === key ? s.typeBtnActive : {}) }}>
-                  <span style={s.typeIcon}>{t.icon}</span>
-                  <span style={s.typeLabel}>{t.label}</span>
-                  <span style={s.typeDesc}>{t.desc}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Extras disponibles */}
-          {extras.length > 0 && (
-            <div style={s.section}>
-              <span style={s.sectionTitle}>Extras non facturés ({extras.length})</span>
-              <p style={s.hint}>Cochez les extras à inclure dans cette facture</p>
-              <div style={s.extrasList}>
-                {extras.map(e => (
-                  <label key={e.id} style={s.extraItem}>
-                    <input type="checkbox" checked={extrasChoisis.includes(e.id)}
-                      onChange={() => toggleExtra(e.id)} style={{ margin: 0 }} />
-                    <span style={s.extraDesc}>{e.description}</span>
-                    <span style={s.extraDate}>{e.date}</span>
-                    <span style={s.extraMont}>{fmt(e.total)}</span>
-                  </label>
-                ))}
-              </div>
+          {/* Choix du mode */}
+          {!mode && (
+            <div style={s.modeGrid}>
+              <button onClick={() => setMode('versement')} style={s.modeBtn}>
+                <span style={s.modeIcon}>💰</span>
+                <span style={s.modeTitle}>Versement</span>
+                <span style={s.modeDesc}>Demander un paiement selon l'échéancier — acompte, mi-travaux, solde final</span>
+              </button>
+              <button onClick={() => setMode('extras')} style={s.modeBtn}>
+                <span style={s.modeIcon}>➕</span>
+                <span style={s.modeTitle}>Extras</span>
+                <span style={s.modeDesc}>Facturer les travaux supplémentaires accumulés au cours du chantier</span>
+              </button>
             </div>
           )}
 
-          {/* Postes manuels */}
-          <div style={s.section}>
-            <div style={s.sectionHeader}>
-              <span style={s.sectionTitle}>Postes additionnels</span>
-              <button type="button" onClick={addPoste} style={s.btnSmall}>+ Ajouter</button>
-            </div>
-            <div style={s.tableWrap}>
-              <table style={s.table}>
-                <thead>
-                  <tr>
-                    <th style={{ ...s.th, width: '50%' }}>Description</th>
-                    <th style={{ ...s.th, width: '12%' }}>Qté</th>
-                    <th style={{ ...s.th, width: '18%' }}>Prix unit.</th>
-                    <th style={{ ...s.th, width: '15%' }}>Total</th>
-                    <th style={{ ...s.th, width: '5%' }}></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {postes.map(p => (
-                    <tr key={p.id}>
-                      <td style={s.td}><input style={s.tdInput} value={p.description} placeholder="Description..." onChange={e => updatePoste(p.id, 'description', e.target.value)} /></td>
-                      <td style={s.td}><input style={{ ...s.tdInput, textAlign: 'center' }} type="number" min="0" step="0.5" value={p.qte} onChange={e => updatePoste(p.id, 'qte', e.target.value)} /></td>
-                      <td style={s.td}><input style={{ ...s.tdInput, textAlign: 'right' }} type="number" min="0" step="0.01" value={p.prixUnit} onChange={e => updatePoste(p.id, 'prixUnit', e.target.value)} /></td>
-                      <td style={{ ...s.td, fontWeight: 600, textAlign: 'right', paddingRight: 8 }}>{fmt((parseFloat(p.qte)||0)*(parseFloat(p.prixUnit)||0))}</td>
-                      <td style={s.td}><button type="button" onClick={() => removePoste(p.id)} style={s.removeBtn} disabled={postes.length === 1}>🗑️</button></td>
-                    </tr>
+          {/* MODE VERSEMENT */}
+          {mode === 'versement' && (
+            <div>
+              <button onClick={() => setMode(null)} style={s.backBtn}>← Changer de mode</button>
+
+              {soumission && (
+                <div style={s.soumRef}>
+                  📋 Réf. soumission <strong>{soumission.numero}</strong> — Total : <strong>{fmt(soumission.total)}</strong>
+                  <div style={s.pctBtns}>
+                    <span style={s.pctLabel}>Suggéré :</span>
+                    <button onClick={() => pct(30)} style={s.pctBtn}>30 % ({fmt(ttc((soumission.sousTotal||0)*0.30))})</button>
+                    <button onClick={() => pct(40)} style={s.pctBtn}>40 % ({fmt(ttc((soumission.sousTotal||0)*0.40))})</button>
+                    <button onClick={() => { setLabelVersement('Solde final'); pct(30); }} style={s.pctBtn}>Solde 30 % ({fmt(ttc((soumission.sousTotal||0)*0.30))})</button>
+                  </div>
+                </div>
+              )}
+
+              <div style={s.versRow}>
+                <div style={s.labelBtns}>
+                  {LABELS_VERSEMENT.map(l => (
+                    <button key={l} onClick={() => setLabelVersement(l)}
+                      style={{ ...s.labelBtn, ...(labelVersement === l ? s.labelBtnActive : {}) }}>{l}</button>
                   ))}
-                </tbody>
-              </table>
+                </div>
+                <label style={s.label}>
+                  Montant avant taxes ($)
+                  <input style={s.input} type="number" min="0" step="0.01"
+                    value={montantHT} onChange={e => setMontantHT(e.target.value)}
+                    placeholder="Ex: 1 200.00" autoFocus />
+                </label>
+                {montantHTNum > 0 && (
+                  <div style={s.totalPrev}>
+                    <span>TPS {fmt(tps(montantHTNum))} · TVQ {fmt(tvq(montantHTNum))}</span>
+                    <span style={s.totalPrevAmt}>Total TTC : {fmt(totalVersement)}</span>
+                  </div>
+                )}
+              </div>
+
+              <label style={s.label}>
+                Modalités de paiement
+                <input style={s.input} value={modalites} onChange={e => setModalites(e.target.value)} />
+              </label>
             </div>
-          </div>
+          )}
 
-          {/* Totaux */}
-          <div style={s.totalBox}>
-            {extrasTotal > 0 && <div style={s.totalRow}><span>Extras inclus</span><span>{fmt(extrasTotal)}</span></div>}
-            {postesTotal > 0 && <div style={s.totalRow}><span>Postes additionnels</span><span>{fmt(postesTotal)}</span></div>}
-            <div style={s.totalRow}><span>Sous-total</span><span>{fmt(sousTotal)}</span></div>
-            <div style={s.totalRow}><span>TPS (5%)</span><span>{fmt(tps)}</span></div>
-            <div style={s.totalRow}><span>TVQ (9.975%)</span><span>{fmt(tvq)}</span></div>
-            <div style={{ ...s.totalRow, ...s.totalFinal }}><span>TOTAL DÛ</span><span>{fmt(total)}</span></div>
-          </div>
+          {/* MODE EXTRAS */}
+          {mode === 'extras' && (
+            <div>
+              <button onClick={() => setMode(null)} style={s.backBtn}>← Changer de mode</button>
 
-          <div style={s.section}>
-            <label style={s.label}>
-              Modalités de paiement
-              <input style={s.input} value={form.modalitesPaiement}
-                onChange={e => setForm(f => ({ ...f, modalitesPaiement: e.target.value }))} />
-            </label>
-            <label style={s.label}>
-              Notes (optionnel)
-              <textarea style={{ ...s.input, minHeight: 60, resize: 'vertical' }} value={form.notes}
-                onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-                placeholder="Instructions, notes particulières..." />
-            </label>
-          </div>
+              {extras.length === 0 ? (
+                <div style={s.noExtras}>
+                  Aucun extra à facturer pour ce chantier.
+                  <button onClick={() => setActiveTab('extras')} style={s.btnSmall}>➕ Aller aux extras</button>
+                </div>
+              ) : (
+                <>
+                  <p style={s.hint}>Coche les extras à inclure dans cette facture :</p>
+                  <div style={s.extrasList}>
+                    {extras.map(e => (
+                      <label key={e.id} style={s.extraItem}>
+                        <input type="checkbox" checked={extrasChoisis.includes(e.id)}
+                          onChange={() => toggleExtra(e.id)} />
+                        <span style={s.extraDesc}>{e.description}</span>
+                        <span style={s.extraDate}>{e.date}</span>
+                        <span style={s.extraMont}>{fmt(e.total)}</span>
+                      </label>
+                    ))}
+                  </div>
+                  {extrasChoisis.length > 0 && (
+                    <div style={s.totalPrev}>
+                      <span>Sous-total {fmt(extrasSelTotal)} · TPS {fmt(tps(extrasSelTotal))} · TVQ {fmt(tvq(extrasSelTotal))}</span>
+                      <span style={s.totalPrevAmt}>Total TTC : {fmt(totalExtras)}</span>
+                    </div>
+                  )}
+                  <label style={{ ...s.label, marginTop: 16 }}>
+                    Modalités de paiement
+                    <input style={s.input} value={modalites} onChange={e => setModalites(e.target.value)} />
+                  </label>
+                </>
+              )}
+            </div>
+          )}
 
-          <div style={s.formBtns}>
-            <button type="button" onClick={() => setShowForm(false)} style={s.btnSecondary}>Annuler</button>
-            <button type="submit" style={s.btnPrimary} disabled={generating}>
-              {generating ? '⏳ Claude génère la facture...' : '🧾 Générer la facture'}
-            </button>
-          </div>
-        </form>
+          {mode && (
+            <div style={s.formBtns}>
+              <button onClick={() => setShowForm(false)} style={s.btnSecondary}>Annuler</button>
+              <button onClick={handleGenerer} style={s.btnPrimary} disabled={generating}>
+                {generating ? '⏳ Claude génère la facture...' : '🧾 Générer la facture'}
+              </button>
+            </div>
+          )}
+        </div>
       )}
 
       {/* PREVIEW */}
@@ -317,15 +334,13 @@ export default function FacturationClient({ selectedChantier, setActiveTab }) {
 
 const s = {
   page:    { padding: 32, maxWidth: 1100, margin: '0 auto' },
-  infoBar: { background: '#fef9c3', border: '1px solid #fde047', borderRadius: 10, padding: '10px 16px', marginBottom: 24, fontSize: 13, color: '#713f12', lineHeight: 1.5 },
-  topBar:  { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 },
+  topBar:  { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 },
   h1:      { margin: 0, fontSize: 26, fontWeight: 700, color: '#1c1917' },
   sub:     { margin: '4px 0 0', color: '#78716c', fontSize: 14 },
+  infoBar: { background: '#fef9c3', border: '1px solid #fde047', borderRadius: 10, padding: '10px 16px', marginBottom: 24, fontSize: 13, color: '#713f12', lineHeight: 1.5 },
   noChantier: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 400, textAlign: 'center', gap: 12 },
-  noIcon:  { fontSize: 56 },
-  noTitle: { margin: 0, fontSize: 22, color: '#1c1917' },
-  noText:  { color: '#78716c', maxWidth: 360 },
-  summary: { display: 'flex', gap: 0, background: '#fff', borderRadius: 12, border: '1px solid #e7e5e4', marginBottom: 28, overflow: 'hidden' },
+  noIcon:  { fontSize: 56 }, noTitle: { margin: 0, fontSize: 22, color: '#1c1917' }, noText: { color: '#78716c', maxWidth: 360 },
+  summary: { display: 'flex', background: '#fff', borderRadius: 12, border: '1px solid #e7e5e4', marginBottom: 28, overflow: 'hidden' },
   summaryItem: { flex: 1, padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: 4 },
   summaryDivider: { width: 1, background: '#e7e5e4' },
   summaryLabel: { fontSize: 12, color: '#78716c', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' },
@@ -333,55 +348,54 @@ const s = {
   formCard: { background: '#fff', borderRadius: 16, padding: 28, marginBottom: 28, border: '1px solid #e7e5e4', boxShadow: '0 4px 16px rgba(0,0,0,0.08)' },
   formHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
   formTitle: { margin: 0, fontSize: 20, fontWeight: 700, color: '#1c1917' },
-  closeBtn: { background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#78716c' },
-  section:  { marginBottom: 24 },
-  sectionHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  sectionTitle: { display: 'block', fontSize: 15, fontWeight: 700, color: '#44403c', marginBottom: 10 },
-  hint:     { margin: '0 0 10px', fontSize: 12, color: '#78716c' },
-  typeGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 10 },
-  typeBtn:  { background: '#fafaf9', border: '2px solid #e7e5e4', borderRadius: 10, padding: '12px 14px', cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s', display: 'flex', flexDirection: 'column', gap: 4 },
-  typeBtnActive: { background: '#fff7ed', borderColor: '#fb923c' },
-  typeIcon: { fontSize: 20 },
-  typeLabel:{ fontSize: 13, fontWeight: 700, color: '#1c1917' },
-  typeDesc: { fontSize: 11, color: '#78716c' },
-  extrasList: { display: 'flex', flexDirection: 'column', gap: 6 },
-  extraItem: { display: 'flex', alignItems: 'center', gap: 12, background: '#fafaf9', border: '1px solid #e7e5e4', borderRadius: 8, padding: '8px 12px', cursor: 'pointer' },
+  closeBtn:  { background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#78716c' },
+  modeGrid:  { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 },
+  modeBtn:   { background: '#fafaf9', border: '2px solid #e7e5e4', borderRadius: 12, padding: 24, cursor: 'pointer', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 8, transition: 'all 0.15s', ':hover': { borderColor: '#fb923c' } },
+  modeIcon:  { fontSize: 32 },
+  modeTitle: { fontSize: 17, fontWeight: 700, color: '#1c1917' },
+  modeDesc:  { fontSize: 13, color: '#78716c', lineHeight: 1.5 },
+  backBtn:   { background: 'none', border: 'none', color: '#78716c', cursor: 'pointer', fontSize: 13, marginBottom: 20, padding: 0 },
+  soumRef:   { background: '#fef7ed', border: '1px solid #fed7aa', borderRadius: 10, padding: '12px 16px', marginBottom: 20, fontSize: 14, color: '#92400e' },
+  pctBtns:   { display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, flexWrap: 'wrap' },
+  pctLabel:  { fontSize: 12, color: '#78716c' },
+  pctBtn:    { background: '#fff', border: '1px solid #fed7aa', color: '#c2410c', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontSize: 12, fontWeight: 600 },
+  versRow:   { marginBottom: 16 },
+  labelBtns: { display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' },
+  labelBtn:  { background: '#f5f5f4', border: '1.5px solid #e7e5e4', borderRadius: 8, padding: '7px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#44403c' },
+  labelBtnActive: { background: '#fff7ed', borderColor: '#fb923c', color: '#c2410c' },
+  totalPrev: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#fef7ed', borderRadius: 8, padding: '10px 14px', marginTop: 10, fontSize: 13, color: '#78716c' },
+  totalPrevAmt: { fontWeight: 700, fontSize: 16, color: '#c2410c' },
+  noExtras:  { textAlign: 'center', padding: '32px 0', color: '#78716c', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 },
+  hint:      { fontSize: 13, color: '#78716c', marginBottom: 10 },
+  extrasList:{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 },
+  extraItem: { display: 'flex', alignItems: 'center', gap: 12, background: '#fafaf9', border: '1px solid #e7e5e4', borderRadius: 8, padding: '10px 12px', cursor: 'pointer' },
   extraDesc: { flex: 1, fontSize: 13, color: '#1c1917' },
   extraDate: { fontSize: 12, color: '#78716c' },
   extraMont: { fontSize: 13, fontWeight: 700, color: '#ea580c' },
-  tableWrap: { overflowX: 'auto' },
-  table:   { width: '100%', borderCollapse: 'collapse', fontSize: 13 },
-  th:      { background: '#fef7ed', padding: '8px 6px', textAlign: 'left', fontWeight: 700, color: '#44403c', borderBottom: '2px solid #fed7aa' },
-  td:      { padding: '6px 4px', borderBottom: '1px solid #f0f0f0' },
-  tdInput: { width: '100%', padding: '6px 8px', border: '1px solid #e7e5e4', borderRadius: 6, fontSize: 13, outline: 'none', fontFamily: 'inherit' },
-  removeBtn: { background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, opacity: 0.7 },
-  totalBox:{ background: '#fef7ed', borderRadius: 12, padding: '16px 20px', marginBottom: 24, border: '1px solid #fed7aa' },
-  totalRow:{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 14, color: '#44403c' },
-  totalFinal: { borderTop: '2px solid #fb923c', marginTop: 8, paddingTop: 8, fontSize: 17, fontWeight: 700, color: '#c2410c' },
-  label:   { display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13, fontWeight: 600, color: '#44403c', marginBottom: 16 },
-  input:   { padding: '10px 12px', borderRadius: 8, border: '1.5px solid #d6d3d1', fontSize: 14, color: '#1c1917', outline: 'none', fontFamily: 'inherit' },
-  formBtns:{ display: 'flex', justifyContent: 'flex-end', gap: 10 },
+  label:     { display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13, fontWeight: 600, color: '#44403c', marginBottom: 16 },
+  input:     { padding: '10px 12px', borderRadius: 8, border: '1.5px solid #d6d3d1', fontSize: 14, color: '#1c1917', outline: 'none', fontFamily: 'inherit' },
+  formBtns:  { display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 24 },
   previewCard: { background: '#fff', borderRadius: 16, padding: 28, marginBottom: 28, border: '2px solid #16a34a', boxShadow: '0 4px 16px rgba(0,0,0,0.08)' },
   previewHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 },
-  previewNum:  { display: 'block', fontSize: 18, fontWeight: 700, color: '#1c1917' },
-  previewTotal:{ display: 'block', fontSize: 22, fontWeight: 700, color: '#16a34a', marginTop: 4 },
-  previewBtns: { display: 'flex', gap: 10 },
-  previewText: { whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: 12, color: '#1c1917', background: '#fafaf9', padding: 20, borderRadius: 8, maxHeight: 600, overflowY: 'auto', border: '1px solid #e7e5e4' },
+  previewNum:   { display: 'block', fontSize: 18, fontWeight: 700, color: '#1c1917' },
+  previewTotal: { display: 'block', fontSize: 22, fontWeight: 700, color: '#16a34a', marginTop: 4 },
+  previewBtns:  { display: 'flex', gap: 10 },
+  previewText:  { whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: 12, color: '#1c1917', background: '#fafaf9', padding: 20, borderRadius: 8, maxHeight: 600, overflowY: 'auto', border: '1px solid #e7e5e4' },
   listSection: { marginTop: 24 },
-  listTitle: { fontSize: 18, fontWeight: 700, color: '#1c1917', marginBottom: 12 },
-  list:    { display: 'flex', flexDirection: 'column', gap: 8 },
-  listItem:{ background: '#fff', borderRadius: 10, padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid #e7e5e4', flexWrap: 'wrap', gap: 10 },
-  listLeft:{ display: 'flex', alignItems: 'center', gap: 12 },
-  listNum: { fontWeight: 700, color: '#16a34a', fontSize: 14 },
-  listType:{ fontSize: 14, color: '#44403c' },
-  listRight:{ display: 'flex', alignItems: 'center', gap: 10 },
-  listTotal:{ fontWeight: 700, fontSize: 15, color: '#1c1917' },
-  badge:   { fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 10 },
-  statSelect: { padding: '6px 8px', borderRadius: 6, border: '1px solid #d6d3d1', fontSize: 13, cursor: 'pointer' },
-  empty:   { textAlign: 'center', padding: '60px 20px' },
-  emptyIcon: { fontSize: 48, marginBottom: 12 },
-  emptyText: { color: '#78716c', marginBottom: 20 },
-  btnPrimary:   { background: '#16a34a', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', cursor: 'pointer', fontSize: 14, fontWeight: 700 },
-  btnSecondary: { background: '#f5f5f4', color: '#44403c', border: '1px solid #d6d3d1', borderRadius: 8, padding: '10px 20px', cursor: 'pointer', fontSize: 14, fontWeight: 600 },
-  btnSmall:     { background: '#fff', color: '#44403c', border: '1px solid #d6d3d1', borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 600 },
+  listTitle:   { fontSize: 18, fontWeight: 700, color: '#1c1917', marginBottom: 12 },
+  list:        { display: 'flex', flexDirection: 'column', gap: 8 },
+  listItem:    { background: '#fff', borderRadius: 10, padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid #e7e5e4', flexWrap: 'wrap', gap: 10 },
+  listLeft:    { display: 'flex', alignItems: 'center', gap: 12 },
+  listNum:     { fontWeight: 700, color: '#16a34a', fontSize: 14 },
+  listType:    { fontSize: 14, color: '#44403c' },
+  listRight:   { display: 'flex', alignItems: 'center', gap: 10 },
+  listTotal:   { fontWeight: 700, fontSize: 15, color: '#1c1917' },
+  badge:       { fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 10 },
+  statSelect:  { padding: '6px 8px', borderRadius: 6, border: '1px solid #d6d3d1', fontSize: 13, cursor: 'pointer' },
+  empty:       { textAlign: 'center', padding: '60px 20px' },
+  emptyIcon:   { fontSize: 48, marginBottom: 12 },
+  emptyText:   { color: '#78716c', marginBottom: 20 },
+  btnPrimary:  { background: '#16a34a', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', cursor: 'pointer', fontSize: 14, fontWeight: 700 },
+  btnSecondary:{ background: '#f5f5f4', color: '#44403c', border: '1px solid #d6d3d1', borderRadius: 8, padding: '10px 20px', cursor: 'pointer', fontSize: 14, fontWeight: 600 },
+  btnSmall:    { background: '#fff', color: '#44403c', border: '1px solid #d6d3d1', borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 600 },
 };
