@@ -73,6 +73,15 @@ export const api = {
   genererContrat: (data)       => apiFetchJSON(`${BASE}/contrats/generer`, { method: 'POST', body: JSON.stringify(data) }),
   deleteContrat:  (id)         => apiFetchJSON(`${BASE}/contrats/${id}`, { method: 'DELETE' }),
 
+  // Facturation client
+  getFacturesClient:    (chantierId) => apiFetchJSON(`${BASE}/chantiers/${chantierId}/factures-client`),
+  genererFactureClient: (data)       => apiFetchJSON(`${BASE}/factures-client/generer`, { method: 'POST', body: JSON.stringify(data) }),
+  updateFactureClient:  (id, d)      => apiFetchJSON(`${BASE}/factures-client/${id}`, { method: 'PUT', body: JSON.stringify(d) }),
+  deleteFactureClient:  (id)         => apiFetchJSON(`${BASE}/factures-client/${id}`, { method: 'DELETE' }),
+
+  // Rentabilité
+  getRentabilite: (chantierId) => apiFetchJSON(`${BASE}/chantiers/${chantierId}/rentabilite`),
+
   // Stripe
   stripeCheckout: ()           => apiFetchJSON(`${BASE}/stripe/checkout`, { method: 'POST' }),
   stripeVerify:   (sessionId)  => apiFetchJSON(`${BASE}/stripe/verify-session`, { method: 'POST', body: JSON.stringify({ sessionId }) }),

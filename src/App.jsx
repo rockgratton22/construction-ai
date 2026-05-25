@@ -11,6 +11,7 @@ import ExtrasTracker from './components/ExtrasTracker.jsx';
 import FactureUpload from './components/FactureUpload.jsx';
 import ContratGenerator from './components/ContratGenerator.jsx';
 import ParametresEntreprise from './components/ParametresEntreprise.jsx';
+import FacturationClient from './components/FacturationClient.jsx';
 
 export default function App() {
   const { user, loading: authLoading, token, trialExpired, refreshUser } = useAuth();
@@ -99,6 +100,9 @@ export default function App() {
         )}
         {activeTab === 'contrats' && (
           <ContratGenerator selectedChantier={selectedChantier} setActiveTab={setActiveTab} />
+        )}
+        {activeTab === 'facturation' && (
+          <FacturationClient selectedChantier={selectedChantier} setActiveTab={setActiveTab} />
         )}
         {activeTab === 'parametres' && <ParametresEntreprise />}
       </main>

@@ -54,22 +54,25 @@ app.use(express.json({ limit: '50mb' }));
 
 const DATA_DIR = join(__dirname, 'data');
 const FILES = {
-  chantiers:   join(DATA_DIR, 'chantiers.json'),
-  soumissions: join(DATA_DIR, 'soumissions.json'),
-  extras:      join(DATA_DIR, 'extras.json'),
-  factures:    join(DATA_DIR, 'factures.json'),
-  contrats:    join(DATA_DIR, 'contrats.json'),
-  config:      join(DATA_DIR, 'config.json'),
-  users:       join(DATA_DIR, 'users.json'),
+  chantiers:      join(DATA_DIR, 'chantiers.json'),
+  soumissions:    join(DATA_DIR, 'soumissions.json'),
+  extras:         join(DATA_DIR, 'extras.json'),
+  factures:       join(DATA_DIR, 'factures.json'),
+  facturesClient: join(DATA_DIR, 'facturesClient.json'),
+  contrats:       join(DATA_DIR, 'contrats.json'),
+  config:         join(DATA_DIR, 'config.json'),
+  users:          join(DATA_DIR, 'users.json'),
 };
 
 if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR);
 const DEFAULTS = {
-  chantiers: '[]', soumissions: '[]', extras: '[]', factures: '[]', contrats: '[]',
+  chantiers: '[]', soumissions: '[]', extras: '[]', factures: '[]',
+  facturesClient: '[]', contrats: '[]',
   users: '[]',
   config: JSON.stringify({
     entreprise: { nom: '', adresse: '', telephone: '', email: '', rbq: '', neq: '' },
     compteur_soumissions: 0,
+    compteur_factures_client: 0,
   }, null, 2),
 };
 Object.entries(FILES).forEach(([k, p]) => { if (!existsSync(p)) writeFileSync(p, DEFAULTS[k]); });
@@ -83,6 +86,13 @@ function nextSoumissionNum() {
   cfg.compteur_soumissions = (cfg.compteur_soumissions || 0) + 1;
   writeJSON(FILES.config, cfg);
   return `SOU-${new Date().getFullYear()}-${String(cfg.compteur_soumissions).padStart(3, '0')}`;
+}
+
+function nextFactureClientNum() {
+  const cfg = readJSON(FILES.config);
+  cfg.compteur_factures_client = (cfg.compteur_factures_client || 0) + 1;
+  writeJSON(FILES.config, cfg);
+  return `FAC-${new Date().getFullYear()}-${String(cfg.compteur_factures_client).padStart(3, '0')}`;
 }
 
 function computeUserOut(user) {
@@ -305,11 +315,12 @@ app.put('/api/chantiers/:id', requireAuth, requireAccess, (req, res) => {
 
 app.delete('/api/chantiers/:id', requireAuth, requireAccess, (req, res) => {
   const id = req.params.id;
-  writeJSON(FILES.chantiers,   readJSON(FILES.chantiers).filter(c => c.id !== id));
-  writeJSON(FILES.soumissions, readJSON(FILES.soumissions).filter(s => s.chantierId !== id));
-  writeJSON(FILES.extras,      readJSON(FILES.extras).filter(e => e.chantierId !== id));
-  writeJSON(FILES.factures,    readJSON(FILES.factures).filter(f => f.chantierId !== id));
-  writeJSON(FILES.contrats,    readJSON(FILES.contrats).filter(c => c.chantierId !== id));
+  writeJSON(FILES.chantiers,      readJSON(FILES.chantiers).filter(c => c.id !== id));
+  writeJSON(FILES.soumissions,    readJSON(FILES.soumissions).filter(s => s.chantierId !== id));
+  writeJSON(FILES.extras,         readJSON(FILES.extras).filter(e => e.chantierId !== id));
+  writeJSON(FILES.factures,       readJSON(FILES.factures).filter(f => f.chantierId !== id));
+  writeJSON(FILES.facturesClient, readJSON(FILES.facturesClient).filter(f => f.chantierId !== id));
+  writeJSON(FILES.contrats,       readJSON(FILES.contrats).filter(c => c.chantierId !== id));
   res.json({ ok: true });
 });
 
@@ -696,6 +707,199 @@ Style: professionnel, légalement solide, conforme au droit québécois. Texte f
 app.delete('/api/contrats/:id', requireAuth, requireAccess, (req, res) => {
   writeJSON(FILES.contrats, readJSON(FILES.contrats).filter(c => c.id !== req.params.id));
   res.json({ ok: true });
+});
+
+// ──────────────────────────── FACTURATION CLIENT ────────────────────────────
+
+const TYPE_FAC_LABELS = {
+  acompte:     'Acompte',
+  'mi-travaux':'Facture mi-travaux',
+  finale:      'Facture finale',
+  extras:      'Extras / Travaux supplémentaires',
+  partielle:   'Facture partielle',
+};
+
+app.get('/api/chantiers/:id/factures-client', requireAuth, requireAccess, (req, res) => {
+  res.json(readJSON(FILES.facturesClient).filter(f => f.chantierId === req.params.id));
+});
+
+app.post('/api/factures-client/generer', requireAuth, requireAccess, async (req, res) => {
+  const { chantierId, type, postes = [], modalitesPaiement, notes, extrasIds = [] } = req.body;
+
+  const chantier = readJSON(FILES.chantiers).find(c => c.id === chantierId);
+  if (!chantier) return res.status(404).json({ error: 'Chantier introuvable' });
+
+  const cfg    = readJSON(FILES.config);
+  const ent    = cfg.entreprise;
+  const numero = nextFactureClientNum();
+  const today  = new Date().toLocaleDateString('fr-CA');
+
+  const allExtras   = readJSON(FILES.extras);
+  const extrasInclus = extrasIds.length ? allExtras.filter(e => extrasIds.includes(e.id)) : [];
+
+  const tousPostes = [
+    ...postes.map(p => ({
+      description: p.description,
+      qte: parseFloat(p.qte) || 1,
+      prixUnit: parseFloat(p.prixUnit) || 0,
+      total: (parseFloat(p.qte) || 1) * (parseFloat(p.prixUnit) || 0),
+    })),
+    ...extrasInclus.map(e => ({
+      description: e.description + (e.date ? ` (${e.date})` : ''),
+      qte: parseFloat(e.qte) || 1,
+      prixUnit: parseFloat(e.prixUnit) || 0,
+      total: e.total || 0,
+    })),
+  ];
+
+  const sousTotal = tousPostes.reduce((a, p) => a + p.total, 0);
+  const tps       = sousTotal * 0.05;
+  const tvq       = sousTotal * 0.09975;
+  const total     = sousTotal + tps + tvq;
+
+  const entHeader = ent.nom
+    ? [ent.nom, ent.adresse, ent.telephone ? `Tél: ${ent.telephone}` : '', ent.email, ent.rbq ? `RBQ: ${ent.rbq}` : ''].filter(Boolean).join('\n')
+    : '[Nom de votre entreprise]\n[Adresse] | [Téléphone] | [Email]';
+
+  const postesText = tousPostes.length
+    ? tousPostes.map(p => `  • ${p.description}: ${p.qte} × ${fmt(p.prixUnit)} = ${fmt(p.total)}`).join('\n')
+    : '  • Travaux selon contrat';
+
+  const soumRef = (readJSON(FILES.soumissions))
+    .filter(s => s.chantierId === chantierId)
+    .sort((a, b) => (b.statut === 'acceptée' ? 1 : 0) - (a.statut === 'acceptée' ? 1 : 0))[0];
+
+  const prompt = `Tu es ConstructionAI, assistant pour entrepreneurs en construction du Québec.
+Génère une facture client professionnelle et complète en français québécois.
+
+ENTREPRENEUR:
+${entHeader}
+
+CLIENT: ${chantier.client}
+${chantier.email ? `Courriel: ${chantier.email}` : ''}
+${chantier.tel   ? `Tél: ${chantier.tel}` : ''}
+ADRESSE DES TRAVAUX: ${chantier.adresse || '[adresse du chantier]'}
+
+NUMÉRO DE FACTURE: ${numero}
+DATE: ${today}
+TYPE: ${TYPE_FAC_LABELS[type] || type}
+${soumRef ? `RÉFÉRENCE SOUMISSION: ${soumRef.numero}` : ''}
+
+POSTES FACTURÉS:
+${postesText}
+
+RÉCAPITULATIF:
+Sous-total: ${fmt(sousTotal)}
+TPS (5%): ${fmt(tps)}
+TVQ (9.975%): ${fmt(tvq)}
+TOTAL DÛ: ${fmt(total)}
+
+MODALITÉS DE PAIEMENT: ${modalitesPaiement || 'Payable sur réception'}
+${notes ? `NOTES: ${notes}` : ''}
+
+Génère une facture professionnelle incluant:
+1. En-tête avec infos entrepreneur et client
+2. Numéro, date et type de facture
+3. Référence soumission/contrat si disponible
+4. Tableau des postes facturés avec montants exacts
+5. Récapitulatif financier avec taxes (montants exacts)
+6. Modalités de paiement claires
+7. Instructions de paiement (chèque à l'ordre de / virement)
+8. Note: intérêts de 1,5%/mois après 30 jours
+9. Remerciement professionnel
+
+Style: professionnel, sobre, clair, conforme aux pratiques québécoises. Pas de markdown.`;
+
+  try {
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 2000,
+      system: 'Tu es ConstructionAI, spécialisé en facturation de construction au Québec. Génère des factures professionnelles en français québécois. Retourne uniquement le texte du document.',
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    const facture = {
+      id: uuidv4(), chantierId, numero,
+      type, typeLabel: TYPE_FAC_LABELS[type] || type,
+      postes: tousPostes, extrasIds,
+      sousTotal, tps, tvq, total,
+      texteGenere: response.content[0].text,
+      modalitesPaiement: modalitesPaiement || 'Payable sur réception',
+      notes: notes || '',
+      soumissionRef: soumRef?.numero || null,
+      statut: 'brouillon',
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+    };
+
+    const facturesClient = readJSON(FILES.facturesClient);
+    facturesClient.push(facture);
+    writeJSON(FILES.facturesClient, facturesClient);
+
+    // Marquer les extras comme facturés
+    if (extrasIds.length) {
+      const extras = readJSON(FILES.extras);
+      extrasIds.forEach(eid => {
+        const idx = extras.findIndex(e => e.id === eid);
+        if (idx !== -1) extras[idx].statut = 'facturé';
+      });
+      writeJSON(FILES.extras, extras);
+    }
+
+    res.json({ success: true, facture });
+  } catch (err) {
+    console.error('Erreur facture client:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/factures-client/:id', requireAuth, requireAccess, (req, res) => {
+  const facturesClient = readJSON(FILES.facturesClient);
+  const idx = facturesClient.findIndex(f => f.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Facture introuvable' });
+  facturesClient[idx] = { ...facturesClient[idx], ...req.body, updatedAt: new Date().toISOString() };
+  writeJSON(FILES.facturesClient, facturesClient);
+  res.json(facturesClient[idx]);
+});
+
+app.delete('/api/factures-client/:id', requireAuth, requireAccess, (req, res) => {
+  writeJSON(FILES.facturesClient, readJSON(FILES.facturesClient).filter(f => f.id !== req.params.id));
+  res.json({ ok: true });
+});
+
+// ──────────────────────────── RENTABILITÉ ────────────────────────────
+
+app.get('/api/chantiers/:id/rentabilite', requireAuth, requireAccess, (req, res) => {
+  const chantierId = req.params.id;
+  const soumissions    = readJSON(FILES.soumissions).filter(s => s.chantierId === chantierId);
+  const extras         = readJSON(FILES.extras).filter(e => e.chantierId === chantierId);
+  const factures       = readJSON(FILES.factures).filter(f => f.chantierId === chantierId);
+  const facturesClient = readJSON(FILES.facturesClient).filter(f => f.chantierId === chantierId);
+
+  const mainSoum = soumissions.find(s => s.statut === 'acceptée')
+    || soumissions.find(s => s.statut === 'envoyée')
+    || soumissions[soumissions.length - 1];
+
+  const budgetSoumission  = mainSoum?.total || 0;
+  const coutsFournisseurs = factures.reduce((a, f) => a + (f.total || 0), 0);
+  const extrasTotal       = extras.reduce((a, e) => a + (e.total || 0), 0);
+  const factureClientTotal= facturesClient.filter(f => f.statut !== 'brouillon').reduce((a, f) => a + (f.total || 0), 0);
+  const factureClientBrut = facturesClient.reduce((a, f) => a + (f.total || 0), 0);
+
+  const revenusEstimes    = budgetSoumission + extrasTotal;
+  const margeEstimee      = revenusEstimes - coutsFournisseurs;
+  const margePct          = revenusEstimes > 0 ? Math.round((margeEstimee / revenusEstimes) * 100) : 0;
+
+  res.json({
+    budgetSoumission,
+    coutsFournisseurs,
+    extrasTotal,
+    factureClientTotal,
+    factureClientBrut,
+    revenusEstimes,
+    margeEstimee,
+    margePct,
+    soumissionNumero: mainSoum?.numero || null,
+  });
 });
 
 // ──────────────────────────── STATIC (production) ────────────────────────────

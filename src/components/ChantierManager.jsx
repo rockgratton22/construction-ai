@@ -16,6 +16,7 @@ export default function ChantierManager({ chantiers, setChantiers, selectedChant
   const [form, setForm]           = useState(CHAMP_VIDE);
   const [saving, setSaving]       = useState(false);
   const [stats, setStats]         = useState({});
+  const [rent, setRent]           = useState(null);
 
   useEffect(() => {
     api.getDashboard().then(d => {
@@ -24,6 +25,11 @@ export default function ChantierManager({ chantiers, setChantiers, selectedChant
       setStats(map);
     }).catch(() => {});
   }, [chantiers]);
+
+  useEffect(() => {
+    if (!selectedChantier) { setRent(null); return; }
+    api.getRentabilite(selectedChantier.id).then(setRent).catch(() => setRent(null));
+  }, [selectedChantier]);
 
   const openNew  = () => { setForm(CHAMP_VIDE); setEditTarget(null); setShowForm(true); };
   const openEdit = (c, e) => { e.stopPropagation(); setForm({ ...c }); setEditTarget(c.id); setShowForm(true); };
@@ -148,13 +154,43 @@ export default function ChantierManager({ chantiers, setChantiers, selectedChant
 
                 {isSelected && (
                   <div style={s.selectedBar}>
-                    <span>✓ Sélectionné — travaillez dans les autres onglets</span>
+                    <span>✓ Sélectionné</span>
                     <div style={s.quickLinks}>
                       <button onClick={e => { e.stopPropagation(); setActiveTab('soumissions'); }} style={s.quickLink}>📋 Soumissions</button>
                       <button onClick={e => { e.stopPropagation(); setActiveTab('extras'); }} style={s.quickLink}>➕ Extras</button>
-                      <button onClick={e => { e.stopPropagation(); setActiveTab('factures'); }} style={s.quickLink}>🧾 Factures</button>
+                      <button onClick={e => { e.stopPropagation(); setActiveTab('factures'); }} style={s.quickLink}>📦 Fournisseurs</button>
+                      <button onClick={e => { e.stopPropagation(); setActiveTab('facturation'); }} style={s.quickLink}>🧾 Facturation</button>
                       <button onClick={e => { e.stopPropagation(); setActiveTab('contrats'); }} style={s.quickLink}>📄 Contrats</button>
                     </div>
+                    {rent && rent.revenusEstimes > 0 && (
+                      <div style={s.rentBox} onClick={e => e.stopPropagation()}>
+                        <div style={s.rentRow}>
+                          <span style={s.rentLabel}>Budget soumissionné</span>
+                          <span style={s.rentVal}>{fmt(rent.budgetSoumission)}</span>
+                        </div>
+                        <div style={s.rentRow}>
+                          <span style={s.rentLabel}>+ Extras</span>
+                          <span style={s.rentVal}>{fmt(rent.extrasTotal)}</span>
+                        </div>
+                        <div style={s.rentRow}>
+                          <span style={s.rentLabel}>− Coûts fournisseurs</span>
+                          <span style={{ ...s.rentVal, color: '#dc2626' }}>−{fmt(rent.coutsFournisseurs)}</span>
+                        </div>
+                        <div style={s.rentDivider} />
+                        <div style={s.rentRow}>
+                          <span style={{ ...s.rentLabel, fontWeight: 700 }}>Marge estimée</span>
+                          <span style={{ ...s.rentVal, fontWeight: 700, color: rent.margePct >= 30 ? '#16a34a' : rent.margePct >= 15 ? '#ea580c' : '#dc2626' }}>
+                            {fmt(rent.margeEstimee)} ({rent.margePct}%)
+                          </span>
+                        </div>
+                        {rent.factureClientTotal > 0 && (
+                          <div style={s.rentRow}>
+                            <span style={s.rentLabel}>Facturé au client</span>
+                            <span style={{ ...s.rentVal, color: '#16a34a' }}>{fmt(rent.factureClientTotal)}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -195,6 +231,11 @@ const s = {
     background: '#fff7ed', border: '1px solid #fed7aa', color: '#c2410c',
     borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontSize: 12, fontWeight: 600,
   },
+  rentBox:     { marginTop: 12, background: 'rgba(255,255,255,0.7)', borderRadius: 8, padding: '10px 12px', border: '1px solid #fed7aa' },
+  rentRow:     { display: 'flex', justifyContent: 'space-between', padding: '3px 0', fontSize: 12 },
+  rentLabel:   { color: '#78716c' },
+  rentVal:     { fontWeight: 600, color: '#1c1917' },
+  rentDivider: { borderTop: '1px solid #e7e5e4', margin: '6px 0' },
   empty:     { textAlign: 'center', padding: '80px 20px' },
   emptyIcon: { fontSize: 56, marginBottom: 16 },
   emptyText: { color: '#78716c', fontSize: 16, marginBottom: 20 },

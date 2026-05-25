@@ -4,12 +4,13 @@ export default function Header({ activeTab, setActiveTab, selectedChantier, setS
   const { user, logout } = useAuth();
 
   const tabs = [
-    { id: 'chantiers',   label: '🏗️ Chantiers' },
-    { id: 'soumissions', label: '📋 Soumissions' },
-    { id: 'extras',      label: '➕ Extras' },
-    { id: 'factures',    label: '🧾 Factures' },
-    { id: 'contrats',    label: '📄 Contrats' },
-    { id: 'parametres',  label: '⚙️ Paramètres' },
+    { id: 'chantiers',        label: '🏗️ Chantiers' },
+    { id: 'soumissions',      label: '📋 Soumissions' },
+    { id: 'extras',           label: '➕ Extras' },
+    { id: 'factures',         label: '📦 Factures fournisseurs' },
+    { id: 'facturation',      label: '🧾 Facturation client' },
+    { id: 'parametres',       label: '⚙️ Paramètres' },
+    { id: 'contrats',         label: '📄 Contrats' },
   ];
 
   return (
