@@ -4,12 +4,13 @@ import { api } from '../utils/api.js';
 const VIDE = { nom: '', adresse: '', telephone: '', email: '', rbq: '', neq: '' };
 const COMPTEUR_VIDE = { soumissions: 1, factures: 1 };
 
-export default function ParametresEntreprise() {
+export default function ParametresEntreprise({ setActiveTab }) {
   const [form, setForm]         = useState(VIDE);
   const [conditions, setCond]   = useState('');
   const [compteurs, setCompteurs] = useState(COMPTEUR_VIDE);
   const [saving, setSaving]     = useState(false);
   const [saved, setSaved]       = useState(false);
+  const [isFirstSave, setIsFirstSave] = useState(false);
 
   useEffect(() => {
     api.getConfig().then(cfg => {
@@ -19,6 +20,7 @@ export default function ParametresEntreprise() {
         soumissions: (cfg.compteur_soumissions || 0) + 1,
         factures:    (cfg.compteur_factures_client || 0) + 1,
       });
+      if (!cfg.entreprise?.nom) setIsFirstSave(true);
     }).catch(() => {});
   }, []);
 
@@ -33,6 +35,7 @@ export default function ParametresEntreprise() {
         compteur_factures_client:  Math.max(0, parseInt(compteurs.factures) - 1) || 0,
       });
       setSaved(true);
+      setIsFirstSave(false);
       setTimeout(() => setSaved(false), 3000);
     } finally {
       setSaving(false);
@@ -54,7 +57,14 @@ export default function ParametresEntreprise() {
         </div>
       </div>
       <div style={s.infoBar}>
-        💡 <strong>À faire en premier :</strong> Entre tes infos d'entreprise ici une seule fois. Ton nom, adresse, numéro RBQ et courriel vont apparaître automatiquement sur toutes tes soumissions, factures et contrats. Sans ça, tes documents seront incomplets.
+        <div style={s.infoBarSteps}>
+          <span style={s.stepActive}>① Paramètres</span>
+          <span style={s.stepArrow}>→</span>
+          <span style={s.stepNext}>② Créer un chantier</span>
+          <span style={s.stepArrow}>→</span>
+          <span style={s.stepNext}>③ Soumissions · Extras · Factures · Contrats</span>
+        </div>
+        💡 <strong>Commencez ici :</strong> Entrez vos informations d'entreprise une seule fois. Votre nom, adresse, numéro RBQ et courriel apparaîtront automatiquement sur toutes vos soumissions, factures et contrats.
       </div>
 
       <form onSubmit={handleSave}>
@@ -133,7 +143,16 @@ export default function ParametresEntreprise() {
         </div>
 
         <div style={s.footer}>
-          {saved && <span style={s.savedMsg}>✅ Paramètres sauvegardés !</span>}
+          {saved && (
+            <div style={s.savedBlock}>
+              <span style={s.savedMsg}>✅ Paramètres sauvegardés !</span>
+              {setActiveTab && (
+                <button type="button" onClick={() => setActiveTab('chantiers')} style={s.btnNext}>
+                  Étape suivante : Créer mon premier chantier →
+                </button>
+              )}
+            </div>
+          )}
           <button type="submit" style={s.btnPrimary} disabled={saving}>
             {saving ? 'Sauvegarde...' : '💾 Sauvegarder'}
           </button>
@@ -145,7 +164,13 @@ export default function ParametresEntreprise() {
 
 const s = {
   page:    { padding: 32, maxWidth: 800, margin: '0 auto' },
-  infoBar: { background: '#fef9c3', border: '1px solid #fde047', borderRadius: 10, padding: '10px 16px', marginBottom: 24, fontSize: 13, color: '#713f12', lineHeight: 1.5 },
+  infoBar:       { background: '#fef9c3', border: '1px solid #fde047', borderRadius: 10, padding: '12px 16px', marginBottom: 24, fontSize: 13, color: '#713f12', lineHeight: 1.6 },
+  infoBarSteps:  { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' },
+  stepActive:    { background: '#f97316', color: '#fff', borderRadius: 6, padding: '2px 10px', fontWeight: 700, fontSize: 12 },
+  stepNext:      { color: '#92400e', fontWeight: 500, fontSize: 12 },
+  stepArrow:     { color: '#b45309', fontSize: 12 },
+  savedBlock:    { display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' },
+  btnNext:       { background: '#16a34a', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', cursor: 'pointer', fontSize: 14, fontWeight: 700, whiteSpace: 'nowrap' },
   topBar:  { marginBottom: 28 },
   h1:      { margin: 0, fontSize: 26, fontWeight: 700, color: '#1c1917' },
   sub:     { margin: '4px 0 0', color: '#78716c', fontSize: 14 },

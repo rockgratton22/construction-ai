@@ -104,7 +104,7 @@ export default function App() {
         {activeTab === 'facturation' && (
           <FacturationClient selectedChantier={selectedChantier} setActiveTab={setActiveTab} />
         )}
-        {activeTab === 'parametres' && <ParametresEntreprise />}
+        {activeTab === 'parametres' && <ParametresEntreprise setActiveTab={setActiveTab} />}
       </main>
     </div>
   );

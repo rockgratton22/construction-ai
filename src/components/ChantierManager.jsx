@@ -177,9 +177,17 @@ export default function ChantierManager({ chantiers, setChantiers, selectedChant
 
       {chantiers.length === 0 ? (
         <div style={s.empty}>
+          <div style={s.emptySteps}>
+            <span style={s.stepDone}>① Paramètres ✓</span>
+            <span style={s.stepArrow}>→</span>
+            <span style={s.stepActive}>② Créer un chantier</span>
+            <span style={s.stepArrow}>→</span>
+            <span style={s.stepNext}>③ Soumissions · Extras · Factures · Contrats</span>
+          </div>
           <div style={s.emptyIcon}>🏗️</div>
-          <p style={s.emptyText}>Aucun chantier pour l'instant</p>
-          <button onClick={openNew} style={s.btnPrimary}>Créer mon premier chantier</button>
+          <h2 style={s.emptyTitle}>Créez votre premier chantier</h2>
+          <p style={s.emptyText}>Un chantier = un projet client. Une fois créé, vous pourrez générer des soumissions, suivre les extras, uploader des factures fournisseurs et générer des contrats.</p>
+          <button onClick={openNew} style={s.btnPrimary}>+ Créer mon premier chantier</button>
         </div>
       ) : (
         <div style={s.grid}>
@@ -299,9 +307,15 @@ const s = {
   rentLabel:   { color: '#78716c' },
   rentVal:     { fontWeight: 600, color: '#1c1917' },
   rentDivider: { borderTop: '1px solid #e7e5e4', margin: '6px 0' },
-  empty:     { textAlign: 'center', padding: '80px 20px' },
-  emptyIcon: { fontSize: 56, marginBottom: 16 },
-  emptyText: { color: '#78716c', fontSize: 16, marginBottom: 20 },
+  empty:      { textAlign: 'center', padding: '60px 20px', maxWidth: 560, margin: '0 auto' },
+  emptySteps: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 32, flexWrap: 'wrap' },
+  stepDone:   { background: '#dcfce7', color: '#15803d', borderRadius: 6, padding: '2px 10px', fontWeight: 700, fontSize: 12 },
+  stepActive: { background: '#f97316', color: '#fff', borderRadius: 6, padding: '2px 10px', fontWeight: 700, fontSize: 12 },
+  stepNext:   { color: '#a8a29e', fontWeight: 500, fontSize: 12 },
+  stepArrow:  { color: '#d6d3d1', fontSize: 12 },
+  emptyIcon:  { fontSize: 56, marginBottom: 16 },
+  emptyTitle: { margin: '0 0 10px', fontSize: 22, fontWeight: 700, color: '#1c1917' },
+  emptyText:  { color: '#78716c', fontSize: 15, marginBottom: 24, lineHeight: 1.6 },
   overlay: {
     position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
     display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200,
