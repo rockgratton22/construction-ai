@@ -69,11 +69,7 @@ const DEFAULTS = {
   chantiers: '[]', soumissions: '[]', extras: '[]', factures: '[]',
   facturesClient: '[]', contrats: '[]',
   users: '[]',
-  config: JSON.stringify({
-    entreprise: { nom: '', adresse: '', telephone: '', email: '', rbq: '', neq: '' },
-    compteur_soumissions: 0,
-    compteur_factures_client: 0,
-  }, null, 2),
+  config: '{}',
 };
 Object.entries(FILES).forEach(([k, p]) => { if (!existsSync(p)) writeFileSync(p, DEFAULTS[k]); });
 
@@ -81,17 +77,35 @@ const readJSON  = (f) => JSON.parse(readFileSync(f, 'utf-8'));
 const writeJSON = (f, d) => writeFileSync(f, JSON.stringify(d, null, 2));
 const fmt = (n) => new Intl.NumberFormat('fr-CA', { style: 'currency', currency: 'CAD' }).format(n || 0);
 
-function nextSoumissionNum() {
-  const cfg = readJSON(FILES.config);
+const DEFAULT_CONFIG = () => ({
+  entreprise: { nom: '', adresse: '', telephone: '', email: '', rbq: '', neq: '' },
+  conditionsPersonnalisees: '',
+  compteur_soumissions: 0,
+  compteur_factures_client: 0,
+});
+
+function readUserConfig(userId) {
+  const all = readJSON(FILES.config);
+  return all[userId] ? { ...DEFAULT_CONFIG(), ...all[userId] } : DEFAULT_CONFIG();
+}
+
+function writeUserConfig(userId, data) {
+  const all = readJSON(FILES.config);
+  all[userId] = data;
+  writeJSON(FILES.config, all);
+}
+
+function nextSoumissionNum(userId) {
+  const cfg = readUserConfig(userId);
   cfg.compteur_soumissions = (cfg.compteur_soumissions || 0) + 1;
-  writeJSON(FILES.config, cfg);
+  writeUserConfig(userId, cfg);
   return `SOU-${new Date().getFullYear()}-${String(cfg.compteur_soumissions).padStart(3, '0')}`;
 }
 
-function nextFactureClientNum() {
-  const cfg = readJSON(FILES.config);
+function nextFactureClientNum(userId) {
+  const cfg = readUserConfig(userId);
   cfg.compteur_factures_client = (cfg.compteur_factures_client || 0) + 1;
-  writeJSON(FILES.config, cfg);
+  writeUserConfig(userId, cfg);
   return `FAC-${new Date().getFullYear()}-${String(cfg.compteur_factures_client).padStart(3, '0')}`;
 }
 
@@ -254,16 +268,16 @@ app.post('/api/stripe/verify-session', requireAuth, async (req, res) => {
 
 // ──────────────────────────── CONFIG ENTREPRISE ────────────────────────────
 
-app.get('/api/config', requireAuth, (_req, res) => res.json(readJSON(FILES.config)));
+app.get('/api/config', requireAuth, (req, res) => res.json(readUserConfig(req.user.userId)));
 
 app.put('/api/config', requireAuth, (req, res) => {
-  const cfg = readJSON(FILES.config);
+  const cfg = readUserConfig(req.user.userId);
   const { conditionsPersonnalisees, compteur_soumissions, compteur_factures_client, ...entrepriseFields } = req.body;
   cfg.entreprise = { ...cfg.entreprise, ...entrepriseFields };
   if (conditionsPersonnalisees !== undefined) cfg.conditionsPersonnalisees = conditionsPersonnalisees;
   if (compteur_soumissions   !== undefined) cfg.compteur_soumissions   = parseInt(compteur_soumissions)   || 0;
   if (compteur_factures_client !== undefined) cfg.compteur_factures_client = parseInt(compteur_factures_client) || 0;
-  writeJSON(FILES.config, cfg);
+  writeUserConfig(req.user.userId, cfg);
   res.json(cfg);
 });
 
@@ -339,8 +353,8 @@ app.post('/api/soumissions', requireAuth, async (req, res) => {
   const chantier = readJSON(FILES.chantiers).find(c => c.id === chantierId);
   if (!chantier) return res.status(404).json({ error: 'Chantier introuvable' });
 
-  const cfg    = readJSON(FILES.config);
-  const numero = nextSoumissionNum();
+  const cfg    = readUserConfig(req.user.userId);
+  const numero = nextSoumissionNum(req.user.userId);
   const today  = new Date().toLocaleDateString('fr-CA');
 
   const tauxHoraire  = parseFloat(mainOeuvreRate)  || 75;
@@ -599,7 +613,7 @@ app.post('/api/contrats/generer', requireAuth, async (req, res) => {
   const soumission = readJSON(FILES.soumissions).find(s => s.id === soumissionId);
   if (!chantier || !soumission) return res.status(404).json({ error: 'Chantier ou soumission introuvable' });
 
-  const cfg = readJSON(FILES.config);
+  const cfg = readUserConfig(req.user.userId);
   const ent = cfg.entreprise;
   const entHeader = ent.nom
     ? [ent.nom, ent.adresse, ent.telephone ? `Tél: ${ent.telephone}` : '', ent.email, ent.rbq ? `RBQ: ${ent.rbq}` : ''].filter(Boolean).join('\n')
@@ -704,9 +718,9 @@ app.post('/api/factures-client/generer', requireAuth, async (req, res) => {
   const chantier = readJSON(FILES.chantiers).find(c => c.id === chantierId);
   if (!chantier) return res.status(404).json({ error: 'Chantier introuvable' });
 
-  const cfg    = readJSON(FILES.config);
+  const cfg    = readUserConfig(req.user.userId);
   const ent    = cfg.entreprise;
-  const numero = nextFactureClientNum();
+  const numero = nextFactureClientNum(req.user.userId);
   const today  = new Date().toLocaleDateString('fr-CA');
 
   const allExtras   = readJSON(FILES.extras);
